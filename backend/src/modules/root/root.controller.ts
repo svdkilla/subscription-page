@@ -24,9 +24,33 @@ export class RootController {
         private readonly subpageConfigService: SubpageConfigService,
     ) {}
 
+    @Get('health')
+    health() {
+        return { status: 'ok' };
+    }
+
     @Get(APP_CONFIG_ROUTE_WO_LEADING_PATH)
-    async getSubscriptionPageConfig(@GetJWTPayload() user: IJwtPayload, @Req() request: Request) {
-        return await this.subpageConfigService.getSubscriptionPageConfig(user.su, request);
+    async getSubscriptionPageConfig(
+        @GetJWTPayload() user: IJwtPayload,
+        @Req() request: Request,
+        @Res() response: Response,
+    ): Promise<void> {
+        const { config, etag } = await this.subpageConfigService.getSubscriptionPageConfig(user.su);
+        response.setHeader('ETag', etag);
+        response.setHeader('Cache-Control', 'private, no-cache, must-revalidate');
+        response.setHeader('CDN-Cache-Control', 'no-store');
+        response.setHeader('Surrogate-Control', 'no-store');
+        response.setHeader('Vary', 'Cookie');
+
+        const candidates = request.headers['if-none-match']
+            ?.split(',')
+            .map((value) => value.trim());
+        if (candidates?.includes(etag) || candidates?.includes('*')) {
+            response.status(304).end();
+            return;
+        }
+
+        response.status(200).json(config);
     }
 
     @Get([':shortUuid', ':shortUuid/:clientType'])

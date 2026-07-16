@@ -6,6 +6,6 @@ export class NotFoundExceptionFilter implements ExceptionFilter {
         const ctx = host.switchToHttp();
         const response = ctx.getResponse();
 
-        response.socket?.destroy();
+        response.status(404).json({ statusCode: 404, message: 'Not found' });
     }
 }

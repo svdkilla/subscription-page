@@ -4,6 +4,7 @@ import { TSubscriptionPagePlatformKey } from '@remnawave/subscription-page-types
 import {
     AccordionBlockRenderer,
     CardsBlockRenderer,
+    CustomLinksWidget,
     InstallationGuideConnector,
     MinimalBlockRenderer,
     RawKeysWidget,
@@ -125,7 +126,10 @@ export const MainPageComponent = ({ isMobile, platform }: IMainPageComponentProp
                         />
                     )}
 
-                    <RawKeysWidget isMobile={isMobile} />
+                    {config.baseSettings.showConnectionKeys && (
+                        <RawKeysWidget isMobile={isMobile} />
+                    )}
+                    <CustomLinksWidget isMobile={isMobile} />
 
                     <Center>
                         <LanguagePicker

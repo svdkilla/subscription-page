@@ -1,25 +1,42 @@
-import { exit } from 'node:process';
-import { Request } from 'express';
-
-import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
-import { Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 
 import {
-    SubscriptionPageRawConfigSchema,
-    TSubscriptionPageRawConfig,
-    SUBPAGE_DEFAULT_CONFIG_UUID,
-} from '@remnawave/subscription-page-types';
+    Injectable,
+    Logger,
+    NotFoundException,
+    OnApplicationBootstrap,
+    ServiceUnavailableException,
+    UnauthorizedException,
+} from '@nestjs/common';
 
+import { SUBPAGE_DEFAULT_CONFIG_UUID } from '@remnawave/subscription-page-types';
+
+import { SubscriptionPageConfigSchema, TSubscriptionPageConfig } from '@common/subpage-config';
 import { decryptUuid, encryptUuid } from '@common/utils/crypt-utils';
 import { TypedConfigService } from '@common/config/app-config';
 import { AxiosService } from '@common/axios';
+
+interface ConfigCacheEntry {
+    config: TSubscriptionPageConfig;
+    etag: string;
+    freshUntil: number;
+    staleUntil: number;
+}
+
+interface ConfigResult {
+    config: TSubscriptionPageConfig;
+    etag: string;
+}
 
 @Injectable()
 export class SubpageConfigService implements OnApplicationBootstrap {
     private readonly logger = new Logger(SubpageConfigService.name);
     private readonly internalJwtSecret: string;
     private readonly subpageConfigUuid: string;
-    private readonly subpageConfigMap: Map<string, TSubscriptionPageRawConfig> = new Map();
+    private readonly cacheTtlMs: number;
+    private readonly lastKnownGoodTtlMs: number;
+    private readonly cache = new Map<string, ConfigCacheEntry>();
+    private readonly inFlight = new Map<string, Promise<ConfigResult>>();
 
     constructor(
         private readonly configService: TypedConfigService,
@@ -27,89 +44,39 @@ export class SubpageConfigService implements OnApplicationBootstrap {
     ) {
         this.internalJwtSecret = this.configService.getOrThrow('INTERNAL_JWT_SECRET');
         this.subpageConfigUuid = this.configService.getOrThrow('SUBPAGE_CONFIG_UUID');
+        this.cacheTtlMs = this.configService.getOrThrow('CONFIG_CACHE_TTL_MS');
+        this.lastKnownGoodTtlMs = this.configService.getOrThrow('CONFIG_LKG_TTL_MS');
     }
 
     public async onApplicationBootstrap(): Promise<void> {
-        const subscriptionPageConfigList = await this.fetchSubscriptionPageConfigList();
-
-        if (subscriptionPageConfigList.length === 0) {
-            this.logger.error('[FATAL] Subscription page config list is empty, exiting...');
-
-            exit(1);
-        }
-
-        this.logger.log(`Found ${subscriptionPageConfigList.length} subscription page configs.`);
-
-        for (const config of subscriptionPageConfigList) {
-            const subscriptionPageConfig =
-                await this.axiosService.getSubscriptionPageConfigByUuid(config);
-
-            if (!subscriptionPageConfig.isOk || !subscriptionPageConfig.response) {
-                this.logger.error(
-                    `[FATAL] Error while fetching one of subpage config: ${config}, exiting...`,
-                );
-
-                exit(1);
-            }
-
-            const parsedConfig = await SubscriptionPageRawConfigSchema.safeParseAsync(
-                subscriptionPageConfig.response.config,
+        const configUuids = await this.fetchSubscriptionPageConfigList();
+        if (configUuids.length === 0) {
+            this.logger.warn(
+                'Subscription page config warm-up was skipped; requests will retry through cache-aside.',
             );
-
-            if (!parsedConfig.success) {
-                this.logger.error(
-                    `[FATAL] ${config} is not valid: ${JSON.stringify(parsedConfig.error)}`,
-                );
-
-                exit(1);
-            }
-
-            this.logger.log(`[OK] ${config}`);
-            this.subpageConfigMap.set(config, parsedConfig.data);
+            return;
         }
 
-        if (this.subpageConfigMap.size === 0) {
-            this.logger.error('[FAILED] At least one SubPage config must be valid!');
-            exit(1);
-        }
-
-        this.logger.log('[OK] Subpage configs are loaded successfully.');
-    }
-
-    public async getSubscriptionPageConfig(
-        encryptedSubpageConfigUuid: string,
-        req: Request,
-    ): Promise<object | void> {
-        const decryptedSubpageConfigUuid = decryptUuid(
-            encryptedSubpageConfigUuid,
-            this.internalJwtSecret,
+        const results = await Promise.allSettled(
+            configUuids.map((uuid) => this.getConfigByUuid(uuid, true)),
         );
-
-        if (!decryptedSubpageConfigUuid) {
-            req.socket?.destroy();
-            return;
-        }
-
-        const subpageConfig = this.subpageConfigMap.get(decryptedSubpageConfigUuid);
-
-        if (!subpageConfig) {
-            this.logger.error(`[FATAL] SubPage config ${decryptedSubpageConfigUuid} not found`);
-            req.socket?.destroy();
-
-            return;
-        }
-
-        return subpageConfig;
+        const loaded = results.filter((result) => result.status === 'fulfilled').length;
+        this.logger.log(`Subscription page config cache warm-up completed (${loaded} valid).`);
     }
 
-    private async fetchSubscriptionPageConfigList(): Promise<string[]> {
-        const subscriptionPageConfigList = await this.axiosService.getSubscriptionPageConfigList();
-        if (!subscriptionPageConfigList.isOk || !subscriptionPageConfigList.response) {
-            this.logger.error('Subscription page config list cannot be fetched');
-            return [];
-        }
+    public async getSubscriptionPageConfig(encryptedUuid: string): Promise<ConfigResult> {
+        const uuid = decryptUuid(encryptedUuid, this.internalJwtSecret);
+        if (!uuid) throw new UnauthorizedException('Invalid subscription page session');
+        return this.getConfigByUuid(uuid);
+    }
 
-        return subscriptionPageConfigList.response.configs.map((config) => config.uuid);
+    public async getBaseSettings(
+        subpageConfigUuid: string | null,
+    ): Promise<TSubscriptionPageConfig['baseSettings']> {
+        const { config } = await this.getConfigByUuid(
+            this.getFinalSubpageConfigUuid(subpageConfigUuid),
+        );
+        return config.baseSettings;
     }
 
     public getEncryptedSubpageConfigUuid(subpageConfigUuidFromRemnawave: string | null): string {
@@ -119,41 +86,79 @@ export class SubpageConfigService implements OnApplicationBootstrap {
         );
     }
 
-    public getBaseSettings(
-        subpageConfigUuid: string | null,
-    ): TSubscriptionPageRawConfig['baseSettings'] {
-        const subpageConfig = this.subpageConfigMap.get(
-            this.getFinalSubpageConfigUuid(subpageConfigUuid),
-        );
-
-        if (!subpageConfig) {
-            return {
-                metaTitle: 'Subscription Page',
-                metaDescription: 'Subscription Page',
-                showConnectionKeys: false,
-                hideGetLinkButton: false,
-            };
+    private async getConfigByUuid(uuid: string, forceRefresh = false): Promise<ConfigResult> {
+        const now = Date.now();
+        const cached = this.cache.get(uuid);
+        if (!forceRefresh && cached && cached.freshUntil > now) {
+            return { config: cached.config, etag: cached.etag };
         }
 
-        return {
-            metaTitle: subpageConfig.baseSettings.metaTitle,
-            metaDescription: subpageConfig.baseSettings.metaDescription,
-            showConnectionKeys: subpageConfig.baseSettings.showConnectionKeys,
-            hideGetLinkButton: subpageConfig.baseSettings.hideGetLinkButton,
-        };
+        const activeRequest = this.inFlight.get(uuid);
+        if (activeRequest) return activeRequest;
+
+        const request = this.refreshConfig(uuid, cached).finally(() => {
+            if (this.inFlight.get(uuid) === request) this.inFlight.delete(uuid);
+        });
+        this.inFlight.set(uuid, request);
+        return request;
+    }
+
+    private async refreshConfig(
+        uuid: string,
+        cached: ConfigCacheEntry | undefined,
+    ): Promise<ConfigResult> {
+        const upstream = await this.axiosService.getSubscriptionPageConfigByUuid(uuid);
+
+        if (!upstream.isOk || !upstream.response) {
+            if (upstream.code === 'NOT_FOUND') {
+                this.cache.delete(uuid);
+                throw new NotFoundException('Subscription page configuration was not found');
+            }
+
+            if (cached && cached.staleUntil > Date.now()) {
+                this.logger.warn('Panel unavailable; serving a bounded last-known-good config.');
+                return { config: cached.config, etag: cached.etag };
+            }
+
+            throw new ServiceUnavailableException(
+                'Subscription page configuration is temporarily unavailable',
+            );
+        }
+
+        const parsed = await SubscriptionPageConfigSchema.safeParseAsync(upstream.response.config);
+        if (!parsed.success) {
+            this.logger.error('Panel returned an invalid subscription page configuration.');
+            if (cached && cached.staleUntil > Date.now()) {
+                return { config: cached.config, etag: cached.etag };
+            }
+            throw new ServiceUnavailableException(
+                'Subscription page configuration is temporarily unavailable',
+            );
+        }
+
+        const config = parsed.data as TSubscriptionPageConfig;
+        const now = Date.now();
+        const etag = `"${createHash('sha256').update(JSON.stringify(config)).digest('base64url')}"`;
+        this.cache.set(uuid, {
+            config,
+            etag,
+            freshUntil: now + this.cacheTtlMs,
+            staleUntil: now + this.lastKnownGoodTtlMs,
+        });
+
+        return { config, etag };
+    }
+
+    private async fetchSubscriptionPageConfigList(): Promise<string[]> {
+        const result = await this.axiosService.getSubscriptionPageConfigList();
+        if (!result.isOk || !result.response) return [];
+        return result.response.configs.map((config) => config.uuid);
     }
 
     private getFinalSubpageConfigUuid(subpageConfigUuid: string | null): string {
-        let finalSubpageConfigUuid: string;
-
-        const isDefaultUuid = this.subpageConfigUuid === SUBPAGE_DEFAULT_CONFIG_UUID;
-
-        if (isDefaultUuid && subpageConfigUuid) {
-            finalSubpageConfigUuid = subpageConfigUuid;
-        } else {
-            finalSubpageConfigUuid = this.subpageConfigUuid;
+        if (this.subpageConfigUuid === SUBPAGE_DEFAULT_CONFIG_UUID && subpageConfigUuid) {
+            return subpageConfigUuid;
         }
-
-        return finalSubpageConfigUuid;
+        return this.subpageConfigUuid;
     }
 }

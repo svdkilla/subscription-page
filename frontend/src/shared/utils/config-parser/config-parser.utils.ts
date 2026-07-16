@@ -5,8 +5,10 @@ import {
 } from '@remnawave/subscription-page-types'
 import dayjs from 'dayjs'
 
+import { sanitizeSvgForDisplay } from '@shared/ui/safe-svg'
+
 export function getIconFromLibrary(iconKey: string, svgLibrary: Record<string, string>) {
-    return svgLibrary[iconKey]
+    return sanitizeSvgForDisplay(svgLibrary[iconKey])
 }
 
 export function getLocalizedText(

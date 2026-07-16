@@ -3,40 +3,50 @@ import * as jwt from 'jsonwebtoken';
 
 import { Logger } from '@nestjs/common';
 
-import { IJwtPayload } from '@common/constants';
+import { INTERNAL_JWT_AUDIENCE, INTERNAL_JWT_ISSUER, IJwtPayload } from '@common/constants';
 
 const logger = new Logger('CheckAssetsCookieMiddleware');
 
-export function checkAssetsCookieMiddleware(
-    req: { user: IJwtPayload } & Request,
-    res: Response,
-    next: NextFunction,
-) {
+export function checkAssetsCookieMiddleware(req: Request, res: Response, next: NextFunction) {
     if (req.path.startsWith('/assets') || req.path.startsWith('/locales')) {
         const secret = process.env.INTERNAL_JWT_SECRET;
 
         if (!secret) {
             logger.error('INTERNAL_JWT_SECRET is not set');
-            res.socket?.destroy();
-
+            res.status(503).json({ statusCode: 503, message: 'Service unavailable' });
             return;
         }
 
         if (!req.cookies.session) {
             logger.debug('No session cookie found');
-            res.socket?.destroy();
-
+            res.status(401).json({ statusCode: 401, message: 'Unauthorized' });
             return;
         }
 
         try {
-            const jwtPayload = jwt.verify(req.cookies.session, secret);
+            const jwtPayload = jwt.verify(req.cookies.session, secret, {
+                algorithms: ['HS256'],
+                issuer: INTERNAL_JWT_ISSUER,
+                audience: INTERNAL_JWT_AUDIENCE,
+                clockTolerance: 5,
+            });
+            if (
+                typeof jwtPayload !== 'object' ||
+                typeof jwtPayload.sessionId !== 'string' ||
+                typeof jwtPayload.su !== 'string' ||
+                jwtPayload.sessionId.length < 16 ||
+                jwtPayload.su.length < 16
+            ) {
+                throw new Error('Required JWT claims are missing');
+            }
 
-            req.user = jwtPayload as unknown as IJwtPayload;
-        } catch (error) {
-            logger.debug(error);
-            res.socket?.destroy();
-
+            (req as { user: IJwtPayload } & Request).user = {
+                sessionId: jwtPayload.sessionId,
+                su: jwtPayload.su,
+            };
+        } catch {
+            logger.debug('Asset session verification failed.');
+            res.status(401).json({ statusCode: 401, message: 'Unauthorized' });
             return;
         }
     }

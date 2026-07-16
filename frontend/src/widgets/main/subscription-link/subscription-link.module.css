@@ -1,8 +1,8 @@
 .modalContent {
-    background: rgba(22, 27, 35, 0.95);
+    background: rgb(22, 27, 35, 0.95);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgb(255, 255, 255, 0.1);
 }
 
 .modalHeader {
@@ -15,6 +15,6 @@
 }
 
 .actionIcon {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgb(255, 255, 255, 0.02);
+    border: 1px solid rgb(255, 255, 255, 0.1);
 }

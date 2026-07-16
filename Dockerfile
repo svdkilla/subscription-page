@@ -29,21 +29,24 @@ LABEL org.opencontainers.image.documentation="https://docs.rw"
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-COPY --from=backend-build /opt/app/dist ./dist
-COPY --from=backend-build /opt/app/node_modules ./node_modules
+COPY --chown=node:node --from=backend-build /opt/app/dist ./dist
+COPY --chown=node:node --from=backend-build /opt/app/node_modules ./node_modules
 
-COPY frontend/dist/ ./frontend/
+COPY --chown=node:node frontend/dist/ ./frontend/
 
-COPY backend/package*.json ./
+COPY --chown=node:node backend/package*.json ./
 
 
-COPY backend/ecosystem.config.js ./
-COPY backend/docker-entrypoint.sh ./
+COPY --chown=node:node backend/ecosystem.config.js ./
+COPY --chown=node:node backend/docker-entrypoint.sh ./
 
 ENV PM2_DISABLE_VERSION_CHECK=true
+ENV PM2_HOME=/tmp/pm2
 ENV NODE_OPTIONS="--max-old-space-size=16384"
 
 RUN npm install pm2 -g
+
+USER node
 
 ENTRYPOINT [ "/bin/sh", "docker-entrypoint.sh" ]
 

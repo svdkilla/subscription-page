@@ -1,0 +1,47 @@
+export const createSubpageConfigFixture = () => ({
+    version: '1',
+    locales: ['en'],
+    brandingSettings: {
+        title: 'Subscription',
+        logoUrl: 'https://example.com/logo.svg',
+        supportUrl: 'https://example.com/support',
+    },
+    uiConfig: {
+        subscriptionInfoBlockType: 'expanded',
+        installationGuidesBlockType: 'cards',
+    },
+    baseSettings: {
+        metaTitle: 'Subscription',
+        metaDescription: 'Subscription page',
+        showConnectionKeys: true,
+        hideGetLinkButton: false,
+    },
+    baseTranslations: Object.fromEntries(
+        [
+            'installationGuideHeader',
+            'connectionKeysHeader',
+            'linkCopied',
+            'linkCopiedToClipboard',
+            'getLink',
+            'scanQrCode',
+            'scanQrCodeDescription',
+            'copyLink',
+            'name',
+            'status',
+            'active',
+            'inactive',
+            'expires',
+            'bandwidth',
+            'scanToImport',
+            'expiresIn',
+            'expired',
+            'unknown',
+            'indefinitely',
+        ].map((key) => [key, { en: key }]),
+    ),
+    svgLibrary: {
+        Link: '<svg viewBox="0 0 24 24"><path d="M1 1h2v2z" /></svg>',
+    },
+    platforms: {},
+    customLinks: [],
+});

@@ -1,0 +1,33 @@
+.linkBox {
+    background: rgb(139, 92, 246, 0.06);
+    border: 1px solid rgb(167, 139, 250, 0.2);
+    border-radius: var(--mantine-radius-md);
+}
+
+.icon {
+    align-items: center;
+    color: var(--mantine-color-violet-4);
+    display: flex;
+    flex-shrink: 0;
+    height: 22px;
+    justify-content: center;
+    width: 22px;
+}
+
+.icon svg {
+    height: 18px;
+    width: 18px;
+}
+
+.modalContent {
+    background: var(--mantine-color-dark-8);
+}
+
+.modalHeader {
+    background: var(--mantine-color-dark-8);
+}
+
+.modalTitle {
+    font-weight: 600;
+}
+

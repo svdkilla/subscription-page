@@ -40,6 +40,17 @@ export const configSchema = z
 
         SUBPAGE_CONFIG_UUID: z.string().default('00000000-0000-0000-0000-000000000000'),
         CUSTOM_SUB_PREFIX: z.optional(z.string()),
+        ALLOWED_HOSTS: z.optional(z.string()),
+        CONFIG_CACHE_TTL_MS: z
+            .string()
+            .default('3000')
+            .transform((value) => Number(value))
+            .pipe(z.number().int().min(1000).max(5000)),
+        CONFIG_LKG_TTL_MS: z
+            .string()
+            .default('300000')
+            .transform((value) => Number(value))
+            .pipe(z.number().int().min(30_000).max(900_000)),
 
         TRUST_PROXY: z
             .string()
@@ -66,7 +77,9 @@ export const configSchema = z
         MARZBAN_LEGACY_SECRET_KEY: z.optional(z.string()),
         MARZBAN_LEGACY_SUBSCRIPTION_VALID_FROM: z.optional(z.string()),
         MARZBAN_LEGACY_DROP_REVOKED_SUBSCRIPTIONS: booleanString(),
-        INTERNAL_JWT_SECRET: z.string(),
+        INTERNAL_JWT_SECRET: z
+            .string()
+            .min(32, 'INTERNAL_JWT_SECRET must contain at least 32 characters'),
         EGAMES_COOKIE: z.optional(z.string()),
     })
     .superRefine((data, ctx) => {

@@ -1,11 +1,12 @@
 process.title = 'rw-subpage';
 
 import { utilities as nestWinstonModuleUtilities, WinstonModule } from 'nest-winston';
+import { json, NextFunction, Request, Response } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import { createLogger } from 'winston';
 import compression from 'compression';
 import * as winston from 'winston';
-import { json } from 'express';
 import path from 'node:path';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -16,10 +17,15 @@ import { NestFactory } from '@nestjs/core';
 
 import { APP_CONFIG_ROUTE_WO_LEADING_PATH } from '@remnawave/subscription-page-types';
 
+import {
+    createHostGuardMiddleware,
+    noRobotsMiddleware,
+    proxyCheckMiddleware,
+    publicRequestGuardMiddleware,
+} from '@common/middlewares';
 import { checkAssetsCookieMiddleware } from '@common/middlewares/check-assets-cookie.middleware';
 import { NotFoundExceptionFilter } from '@common/exception/not-found-exception.filter';
 import { isDevelopment, isDevOrDebugLogsEnabled } from '@common/utils/startup-app';
-import { noRobotsMiddleware, proxyCheckMiddleware } from '@common/middlewares';
 import { getStartMessage } from '@common/utils/startup-app/get-start-message';
 import { customLogFilter } from '@common/utils/filter-logs/filter-logs';
 import { TypedConfigService } from '@common/config/app-config';
@@ -58,7 +64,7 @@ const logger = createLogger({
 });
 
 const assetsPath = isDevelopment()
-    ? path.join(__dirname, '..', '..', 'dev_frontend')
+    ? path.resolve(__dirname, '..', '..', 'dev_frontend')
     : '/opt/app/frontend';
 
 async function bootstrap(): Promise<void> {
@@ -76,13 +82,53 @@ async function bootstrap(): Promise<void> {
 
     app.use(cookieParser());
 
-    app.use(noRobotsMiddleware, proxyCheckMiddleware, checkAssetsCookieMiddleware, getRealIp);
+    app.use(
+        rateLimit({
+            windowMs: 60_000,
+            limit: 240,
+            standardHeaders: 'draft-8',
+            legacyHeaders: false,
+            message: { statusCode: 429, message: 'Too many requests' },
+        }),
+    );
+    app.use(
+        `/${APP_CONFIG_ROUTE_WO_LEADING_PATH}`,
+        rateLimit({
+            windowMs: 60_000,
+            limit: 90,
+            standardHeaders: 'draft-8',
+            legacyHeaders: false,
+            message: { statusCode: 429, message: 'Too many config requests' },
+        }),
+    );
+
+    app.use(
+        publicRequestGuardMiddleware,
+        createHostGuardMiddleware(config.get('ALLOWED_HOSTS')),
+        noRobotsMiddleware,
+        proxyCheckMiddleware,
+        checkAssetsCookieMiddleware,
+        getRealIp,
+    );
+    app.use((_req: Request, res: Response, next: NextFunction) => {
+        res.setHeader(
+            'Permissions-Policy',
+            'accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()',
+        );
+        next();
+    });
 
     app.useGlobalFilters(new NotFoundExceptionFilter());
 
     app.useStaticAssets(assetsPath, {
         index: false,
-        dotfiles: 'ignore',
+        dotfiles: 'deny',
+        redirect: false,
+        fallthrough: true,
+        setHeaders: (response) => {
+            response.setHeader('Cache-Control', 'private, max-age=3600');
+            response.setHeader('X-Content-Type-Options', 'nosniff');
+        },
     });
 
     app.setBaseViewsDir(assetsPath);
@@ -90,15 +136,45 @@ async function bootstrap(): Promise<void> {
     app.engine('html', ejs.renderFile);
     app.setViewEngine('html');
 
-    app.use(json({ limit: '100mb' }));
+    app.use(json({ limit: '16kb', strict: true }));
 
-    app.use(helmet({ contentSecurityPolicy: false }));
+    app.use(
+        helmet({
+            contentSecurityPolicy: {
+                directives: {
+                    defaultSrc: ["'self'"],
+                    baseUri: ["'none'"],
+                    objectSrc: ["'none'"],
+                    frameAncestors: ["'none'"],
+                    frameSrc: ["'none'"],
+                    formAction: ["'none'"],
+                    scriptSrc: ["'self'"],
+                    styleSrc: ["'self'", "'unsafe-inline'"],
+                    connectSrc: ["'self'"],
+                    imgSrc: ["'self'", 'data:', 'https:'],
+                    fontSrc: ["'self'", 'data:'],
+                    manifestSrc: ["'self'"],
+                },
+            },
+            crossOriginEmbedderPolicy: false,
+            crossOriginOpenerPolicy: { policy: 'same-origin' },
+            crossOriginResourcePolicy: { policy: 'same-origin' },
+            hsts: { maxAge: 31_536_000, includeSubDomains: true, preload: true },
+            referrerPolicy: { policy: 'no-referrer' },
+        }),
+    );
 
     app.use(compression());
 
+    morgan.token('safe-url', (request) => {
+        const pathname = request.url?.split('?')[0] ?? '/';
+        if (pathname.startsWith('/assets/')) return '/assets/:asset';
+        if (pathname.startsWith('/locales/')) return '/locales/:locale';
+        return '/:subscription';
+    });
     app.use(
         morgan(
-            ':remote-addr - ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"',
+            ':remote-addr - ":method :safe-url HTTP/:http-version" :status :res[content-length] ":user-agent"',
             {
                 skip: (req) => req?.url?.startsWith('/assets') ?? false,
             },
@@ -107,19 +183,15 @@ async function bootstrap(): Promise<void> {
 
     const customSubPrefix = config.get('CUSTOM_SUB_PREFIX');
 
-    app.setGlobalPrefix(customSubPrefix ?? '', { exclude: [APP_CONFIG_ROUTE_WO_LEADING_PATH] });
+    app.setGlobalPrefix(customSubPrefix ?? '', {
+        exclude: [APP_CONFIG_ROUTE_WO_LEADING_PATH, 'health'],
+    });
 
     if (customSubPrefix) {
         logger.info('[CONFIG] CUSTOM_SUB_PREFIX: ' + customSubPrefix);
     } else {
         logger.info('[CONFIG] CUSTOM_SUB_PREFIX: not set');
     }
-
-    app.enableCors({
-        origin: '*',
-        methods: 'GET',
-        credentials: false,
-    });
 
     app.enableShutdownHooks();
 

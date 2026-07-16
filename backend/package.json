@@ -23,7 +23,9 @@
     "start:prod": "NODE_ENV=production NODE_NO_WARNINGS=1 node dist/src/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "lint:fix": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "lint:fix:imports": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix --rule 'perfectionist/sort-imports: error'"
+    "lint:fix:imports": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix --rule 'perfectionist/sort-imports: error'",
+    "test:unit": "vitest run test/unit",
+    "test:integration": "vitest run test/integration"
   },
   "dependencies": {
     "@nestjs/axios": "4.0.1",
@@ -42,7 +44,9 @@
     "cookie-parser": "^1.4.7",
     "dayjs": "^1.11.21",
     "ejs": "6.0.1",
+    "express-rate-limit": "8.5.2",
     "helmet": "^8.2.0",
+    "isomorphic-dompurify": "3.18.0",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.11.0",
     "nanoid": "5.1.15",
@@ -75,6 +79,7 @@
     "@types/passport-http": "^0.3.11",
     "@types/proxy-addr": "^2.0.3",
     "@types/semver": "^7.7.1",
+    "@types/supertest": "7.2.1",
     "@typescript-eslint/eslint-plugin": "^8.49.0",
     "@typescript-eslint/parser": "^8.49.0",
     "eslint": "9.39.1",
@@ -85,11 +90,13 @@
     "globals": "^16.5.0",
     "prettier": "^3.7.4",
     "source-map-support": "^0.5.21",
+    "supertest": "7.2.2",
     "ts-loader": "9.5.4",
     "ts-node": "10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.49.0"
+    "typescript-eslint": "^8.49.0",
+    "vitest": "4.1.10"
   },
   "overrides": {
     "multer": "2.2.0"

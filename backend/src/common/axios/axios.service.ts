@@ -23,8 +23,8 @@ import {
     TRequestTemplateTypeKeys,
 } from '@remnawave/backend-contract';
 
+import { SUBSCRIPTION_REQUEST_HEADERS_ALLOWLIST } from '@common/constants';
 import { TypedConfigService } from '@common/config/app-config';
-import { IGNORED_HEADERS } from '@common/constants';
 
 import { ICommandResponse } from '../types/command-response.type';
 
@@ -83,7 +83,7 @@ export class AxiosService implements OnModuleInit {
 
         this.subpageVersion = pkg.version!;
 
-        this.logger.log(`Remnawave API URL: ${this.axiosInstance.defaults.baseURL}`);
+        this.logger.log('Connecting to the configured Remnawave API.');
 
         const remnawaveMetadata = await this.getRemnawaveMetadata();
         if (!remnawaveMetadata.isOk || !remnawaveMetadata.remnawaveVersion) {
@@ -192,9 +192,11 @@ export class AxiosService implements OnModuleInit {
                 response: response.data.response,
             };
         } catch (error) {
-            this.logger.error('Error in GetSubscriptionPageConfigByUuid Request:', error);
-
-            return { isOk: false };
+            if (error instanceof AxiosError && error.response?.status === 404) {
+                return { isOk: false, code: 'NOT_FOUND' };
+            }
+            this.logger.error('Subscription page config request failed.');
+            return { isOk: false, code: 'UPSTREAM_UNAVAILABLE' };
         }
     }
 
@@ -225,10 +227,10 @@ export class AxiosService implements OnModuleInit {
                     return { isOk: false };
                 }
 
-                this.logger.error(`Subpage Config List Request failed: ${error.message}`);
+                this.logger.error('Subpage config list request failed.');
                 return { isOk: false };
             } else {
-                this.logger.error(`Subpage Config List Request failed: ${error}`);
+                this.logger.error('Subpage config list request failed.');
                 return { isOk: false };
             }
         }
@@ -305,7 +307,9 @@ export class AxiosService implements OnModuleInit {
             }
 
             const safeHeaders = Object.fromEntries(
-                Object.entries(headers).filter(([key]) => !IGNORED_HEADERS.has(key.toLowerCase())),
+                Object.entries(headers).filter(([key]) =>
+                    SUBSCRIPTION_REQUEST_HEADERS_ALLOWLIST.has(key.toLowerCase()),
+                ),
             );
 
             const response = await this.axiosInstance.request<unknown>({
@@ -334,9 +338,9 @@ export class AxiosService implements OnModuleInit {
                     }
                 }
 
-                this.logger.error(`Error in GetSubscription Request: ${error.message}`);
+                this.logger.error('Subscription content request failed.');
             } else {
-                this.logger.error(`Error in GetSubscription Request: ${error}`);
+                this.logger.error('Subscription content request failed.');
             }
 
             return null;

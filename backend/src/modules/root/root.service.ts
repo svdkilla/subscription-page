@@ -8,9 +8,13 @@ import { Logger } from '@nestjs/common';
 
 import { TRequestTemplateTypeKeys } from '@remnawave/backend-contract';
 
+import {
+    INTERNAL_JWT_AUDIENCE,
+    INTERNAL_JWT_ISSUER,
+    SUBSCRIPTION_RESPONSE_HEADERS_ALLOWLIST,
+} from '@common/constants';
 import { TypedConfigService } from '@common/config/app-config';
 import { AxiosService } from '@common/axios/axios.service';
-import { IGNORED_HEADERS } from '@common/constants';
 import { sanitizeUsername } from '@common/utils';
 
 import { SubpageConfigService } from './subpage-config.service';
@@ -67,18 +71,14 @@ export class RootService {
                 if (username) {
                     const sanitizedUsername = sanitizeUsername(username.username);
 
-                    this.logger.log(
-                        `Decoded Marzban username: ${username.username}, sanitized username: ${sanitizedUsername}`,
-                    );
+                    this.logger.log('Decoded a legacy subscription token.');
 
                     const userInfo = await this.axiosService.getUserByUsername(
                         clientIp,
                         sanitizedUsername,
                     );
                     if (!userInfo.isOk || !userInfo.response) {
-                        this.logger.error(
-                            `Decoded Marzban username is not found in Remnawave, decoded username: ${sanitizedUsername}`,
-                        );
+                        this.logger.error('Decoded legacy subscription was not found.');
 
                         res.socket?.destroy();
                         return;
@@ -113,7 +113,9 @@ export class RootService {
 
             if (subscriptionDataResponse.headers) {
                 Object.entries(subscriptionDataResponse.headers)
-                    .filter(([key]) => !IGNORED_HEADERS.has(key.toLowerCase()))
+                    .filter(([key]) =>
+                        SUBSCRIPTION_RESPONSE_HEADERS_ALLOWLIST.has(key.toLowerCase()),
+                    )
                     .forEach(([key, value]) => {
                         res.setHeader(key, value);
                     });
@@ -121,8 +123,8 @@ export class RootService {
 
             res.status(200).send(subscriptionDataResponse.response);
             return;
-        } catch (error) {
-            this.logger.error('Error in serveSubscriptionPage', error);
+        } catch {
+            this.logger.error('Subscription request failed.');
 
             res.socket?.destroy();
             return;
@@ -137,6 +139,9 @@ export class RootService {
             },
             {
                 expiresIn: '33m',
+                algorithm: 'HS256',
+                issuer: INTERNAL_JWT_ISSUER,
+                audience: INTERNAL_JWT_AUDIENCE,
             },
         );
     }
@@ -207,7 +212,7 @@ export class RootService {
                 return;
             }
 
-            const baseSettings = this.subpageConfigService.getBaseSettings(
+            const baseSettings = await this.subpageConfigService.getBaseSettings(
                 subpageConfig.subpageConfigUuid,
             );
 
@@ -221,6 +226,8 @@ export class RootService {
             res.cookie('session', this.generateJwtForCookie(subpageConfig.subpageConfigUuid), {
                 httpOnly: true,
                 secure: true,
+                sameSite: 'strict',
+                path: '/',
                 maxAge: 1_800_000, // 30 minutes
             });
 
@@ -229,8 +236,8 @@ export class RootService {
                 metaDescription: baseSettings.metaDescription,
                 panelData: Buffer.from(JSON.stringify(subscriptionData)).toString('base64'),
             });
-        } catch (error) {
-            this.logger.error(`Error in returnWebpage: ${error}`);
+        } catch {
+            this.logger.error('Subscription webpage request failed.');
 
             res.socket?.destroy();
             return;
@@ -244,10 +251,10 @@ export class RootService {
         if (!this.marzbanSecretKeys.length) return null;
 
         const token = shortUuid;
-        this.logger.debug(`Verifying token: ${token}`);
+        this.logger.debug('Verifying a legacy subscription token.');
 
         if (!token || token.length < 10) {
-            this.logger.debug(`Token too short: ${token}`);
+            this.logger.debug('Legacy subscription token is too short.');
             return null;
         }
 
@@ -255,7 +262,7 @@ export class RootService {
             const result = await this.decodeMarzbanLink(shortUuid, key);
             if (result) return result;
 
-            this.logger.debug(`Decoding Marzban link failed with key: ${key}`);
+            this.logger.debug('Legacy subscription token did not match a configured key.');
         }
 
         this.logger.debug(`Decoding Marzban link failed with all keys`);
@@ -287,27 +294,27 @@ export class RootService {
                     return null;
                 }
 
-                this.logger.debug(`JWT verified successfully, ${JSON.stringify(payload)}`);
+                this.logger.debug('Legacy JWT verified successfully.');
 
                 return {
                     username: payload.sub,
                     createdAt: jwtCreatedAt,
                 };
-            } catch (err) {
-                this.logger.debug(`JWT verification failed: ${err}`);
+            } catch {
+                this.logger.debug('Legacy JWT verification failed.');
             }
         }
 
         const uToken = token.slice(0, token.length - 10);
         const uSignature = token.slice(token.length - 10);
 
-        this.logger.debug(`Token parts: base: ${uToken}, signature: ${uSignature}`);
+        this.logger.debug('Verifying legacy token signature.');
 
         let decoded: string;
         try {
             decoded = Buffer.from(uToken, 'base64url').toString();
-        } catch (err) {
-            this.logger.debug(`Base64 decode error: ${err}`);
+        } catch {
+            this.logger.debug('Legacy token base64 decoding failed.');
             return null;
         }
 
@@ -317,8 +324,6 @@ export class RootService {
 
         const expectedSignature = Buffer.from(digest).toString('base64url').slice(0, 10);
 
-        this.logger.debug(`Expected signature: ${expectedSignature}, actual: ${uSignature}`);
-
         if (uSignature !== expectedSignature) {
             this.logger.debug('Signature mismatch');
             return null;
@@ -326,7 +331,7 @@ export class RootService {
 
         const parts = decoded.split(',');
         if (parts.length < 2) {
-            this.logger.debug(`Invalid token format: ${decoded}`);
+            this.logger.debug('Legacy token format is invalid.');
             return null;
         }
 
@@ -334,7 +339,7 @@ export class RootService {
         const createdAtInt = parseInt(parts[1], 10);
 
         if (isNaN(createdAtInt)) {
-            this.logger.debug(`Invalid created_at timestamp: ${parts[1]}`);
+            this.logger.debug('Legacy token timestamp is invalid.');
             return null;
         }
 
@@ -344,7 +349,7 @@ export class RootService {
             return null;
         }
 
-        this.logger.debug(`Token decoded. Username: ${username}, createdAt: ${createdAt}`);
+        this.logger.debug('Legacy subscription token decoded successfully.');
 
         return {
             username,
@@ -353,6 +358,7 @@ export class RootService {
     }
 
     private checkSubscriptionValidity(createdAt: Date, username: string): boolean {
+        username = '[redacted]';
         const validFrom = this.configService.get('MARZBAN_LEGACY_SUBSCRIPTION_VALID_FROM');
 
         if (!validFrom) {

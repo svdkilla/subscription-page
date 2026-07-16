@@ -1,9 +1,4 @@
 import {
-    TSubscriptionPageAppConfig,
-    TSubscriptionPageButtonConfig,
-    TSubscriptionPagePlatformKey
-} from '@remnawave/subscription-page-types'
-import {
     Box,
     Button,
     ButtonVariant,
@@ -14,6 +9,11 @@ import {
     Title,
     UnstyledButton
 } from '@mantine/core'
+import {
+    TSubscriptionPageAppConfig,
+    TSubscriptionPageButtonConfig,
+    TSubscriptionPagePlatformKey
+} from '@remnawave/subscription-page-types'
 import { notifications } from '@mantine/notifications'
 import { useClipboard } from '@mantine/hooks'
 import { useState } from 'react'

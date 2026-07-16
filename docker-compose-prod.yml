@@ -4,10 +4,30 @@ services:
     container_name: remnawave-subscription-page
     hostname: remnawave-subscription-page
     restart: always
+    init: true
+    user: '1000:1000'
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    pids_limit: 256
     env_file:
       - .env
     ports:
       - '127.0.0.1:3010:3010'
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'curl -fsS -H "X-Forwarded-For: 127.0.0.1" -H "X-Forwarded-Proto: https" http://127.0.0.1:3010/health || exit 1',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks:
       - remnawave-network
 

@@ -1,9 +1,8 @@
-import {
-    TSubscriptionPageLanguageCode,
-    TSubscriptionPageRawConfig
-} from '@remnawave/subscription-page-types'
+import { TSubscriptionPageLanguageCode } from '@remnawave/subscription-page-types'
 import LanguageDetector from 'i18next-browser-languagedetector'
 import { create } from 'zustand'
+
+import { TSubscriptionPageConfig } from '@shared/utils/custom-links'
 
 import { IActions, IState } from './interfaces'
 
@@ -38,14 +37,14 @@ const initialState: IState = {
 export const useAppConfigStore = create<IActions & IState>()((set) => ({
     ...initialState,
     actions: {
-        setConfig: (config: TSubscriptionPageRawConfig) => {
-            const detectedLang = detectLanguage(config.locales)
-
-            set({
+        setConfig: (config: TSubscriptionPageConfig) => {
+            set((state) => ({
                 config,
-                currentLang: detectedLang,
+                currentLang: config.locales.includes(state.currentLang)
+                    ? state.currentLang
+                    : detectLanguage(config.locales),
                 isConfigLoaded: true
-            })
+            }))
         },
 
         setLanguage: (lang: TSubscriptionPageLanguageCode) => {
@@ -67,7 +66,7 @@ export const useAppConfigStoreActions = () => useAppConfigStore((store) => store
 
 export const useAppConfigNullable = () => useAppConfigStore((state) => state.config)
 
-export const useAppConfig = (): TSubscriptionPageRawConfig => {
+export const useAppConfig = (): TSubscriptionPageConfig => {
     const config = useAppConfigStore((state) => state.config)
     if (!config) {
         throw new Error('useAppConfig must be used after config is loaded (after RootLayout gate)')
