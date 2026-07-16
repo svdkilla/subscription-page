@@ -40,6 +40,10 @@ COPY --chown=node:node backend/package*.json ./
 COPY --chown=node:node backend/ecosystem.config.js ./
 COPY --chown=node:node backend/docker-entrypoint.sh ./
 
+# Keep shell entrypoints portable when the build context comes from Windows.
+RUN sed -i 's/\r$//' docker-entrypoint.sh \
+    && sh -n docker-entrypoint.sh
+
 ENV PM2_DISABLE_VERSION_CHECK=true
 ENV PM2_HOME=/tmp/pm2
 ENV NODE_OPTIONS="--max-old-space-size=16384"
