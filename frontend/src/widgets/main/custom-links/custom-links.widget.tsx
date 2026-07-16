@@ -21,9 +21,7 @@ import {
     resolveCustomLinks,
     ResolvedCustomLink
 } from '@shared/utils/custom-links'
-import { constructSubscriptionUrl } from '@shared/utils/construct-subscription-url'
 import { useAppConfig, useCurrentLang } from '@entities/app-config-store'
-import { useSubscription } from '@entities/subscription-info-store'
 import { vibrate } from '@shared/utils/vibrate'
 import { SafeSvg } from '@shared/ui/safe-svg'
 
@@ -46,12 +44,7 @@ const openExplicitly = (uri: string) => {
 export function CustomLinksWidget({ isMobile }: Props) {
     const config = useAppConfig()
     const locale = useCurrentLang()
-    const subscription = useSubscription()
-    const subscriptionUrl = constructSubscriptionUrl(
-        window.location.href,
-        subscription.user.shortUuid
-    )
-    const links = resolveCustomLinks(config, subscription, locale, subscriptionUrl).filter(
+    const links = resolveCustomLinks(config, locale).filter(
         (link) => !isHttpCustomLinkUri(link.uri)
     )
 

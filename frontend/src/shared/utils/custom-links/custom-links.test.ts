@@ -6,17 +6,12 @@ import {
     resolveCustomLinks,
     SubscriptionPageConfigSchema
 } from './custom-links.schema'
-import { E2E_SUBSCRIPTION_RESPONSE, getE2EAppConfig } from '../../../../e2e/fixtures/e2e-fixtures'
+import { getE2EAppConfig } from '../../../../e2e/fixtures/e2e-fixtures'
 
 describe('subscription-page custom links', () => {
     it('keeps header resolution separate from connection keys', () => {
         const config = SubscriptionPageConfigSchema.parse(getE2EAppConfig(1))
-        const resolved = resolveCustomLinks(
-            config,
-            E2E_SUBSCRIPTION_RESPONSE.response,
-            'en',
-            'https://example.com/e2e-short-uuid'
-        )
+        const resolved = resolveCustomLinks(config, 'en')
 
         expect(resolved).toHaveLength(1)
         expect(resolved[0]).toMatchObject({ name: 'Open help', uri: 'https://example.com/help' })
@@ -56,12 +51,32 @@ describe('subscription-page custom links', () => {
                 enabled: true,
                 uri: 'awg://opaque-payload#Name-from-fragment',
                 order: 0,
-                mode: 'literal'
+                mode: 'subscriptionLinks'
             }
         ]
 
         const parsed = SubscriptionPageConfigSchema.parse(config)
         expect(parsed.customLinks[0]?.displayName).toEqual({})
         expect(parsed.customLinks[0]?.action).toBe('copy')
+    })
+
+    it('rejects the removed template mode and mixed destinations', () => {
+        const config = getE2EAppConfig(1)
+        const base = {
+            id: 'test-link',
+            enabled: true,
+            displayName: { en: 'Test' },
+            action: 'open',
+            order: 0
+        }
+
+        for (const customLink of [
+            { ...base, mode: 'template', uri: 'https://example.com/{{username}}' },
+            { ...base, mode: 'literal', uri: 'vless://opaque#Wrong' },
+            { ...base, mode: 'subscriptionLinks', uri: 'https://example.com/wrong' }
+        ]) {
+            ;(config as { customLinks: unknown[] }).customLinks = [customLink]
+            expect(SubscriptionPageConfigSchema.safeParse(config).success).toBe(false)
+        }
     })
 })

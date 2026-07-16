@@ -11,18 +11,6 @@ export const BLOCKED_CUSTOM_LINK_SCHEMES = [
     'vbscript',
     'view-source'
 ] as const
-export const CUSTOM_LINK_SUBSCRIPTION_PROTOCOLS = [
-    'vless',
-    'vmess',
-    'trojan',
-    'ss',
-    'hysteria2',
-    'hy2',
-    'tuic',
-    'wireguard',
-    'sub'
-] as const
-
 const HTML_DELIMITERS = /[<>]/u
 
 const hasControlCharacters = (value: string): boolean =>
@@ -32,9 +20,7 @@ const hasControlCharacters = (value: string): boolean =>
     })
 const SCHEME_PATTERN = /^([A-Za-z][A-Za-z0-9+.-]*):/u
 const PERCENT_ESCAPE_PATTERN = /%[0-9A-Fa-f]{2}/u
-const TEMPLATE_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/gu
 const blockedSchemes = new Set<string>(BLOCKED_CUSTOM_LINK_SCHEMES)
-const allowedVariables = new Set(['shortUuid', 'subscriptionUrl', 'username'])
 
 const decodedVariants = (value: string): null | string[] => {
     if (!value.includes('%')) return [value]
@@ -74,20 +60,6 @@ export const getCustomLinkUriError = (value: string): null | string => {
     return null
 }
 
-const templateError = (template: string): null | string => {
-    for (const match of template.matchAll(TEMPLATE_PATTERN)) {
-        if (!allowedVariables.has(match[1]!)) return 'Invalid template'
-    }
-    const remainder = template.replace(TEMPLATE_PATTERN, 'value')
-    if (remainder.includes('{{') || remainder.includes('}}')) return 'Invalid template'
-    return getCustomLinkUriError(
-        template
-            .replace(/\{\{username\}\}/gu, 'example-user')
-            .replace(/\{\{shortUuid\}\}/gu, '01234567')
-            .replace(/\{\{subscriptionUrl\}\}/gu, 'https://subscription.invalid/example')
-    )
-}
-
 export const CustomLinkSchema = z
     .object({
         id: z
@@ -112,23 +84,30 @@ export const CustomLinkSchema = z
         action: z.enum(['open', 'copy', 'qr']).default('copy'),
         iconKey: z.string().optional(),
         order: z.number().int().min(0).max(10_000),
-        mode: z.enum(['literal', 'template', 'subscriptionLinks']).default('literal'),
-        protocol: z.enum(CUSTOM_LINK_SUBSCRIPTION_PROTOCOLS).optional()
+        mode: z.enum(['literal', 'subscriptionLinks']).default('literal')
     })
     .superRefine((value, context) => {
-        if (value.mode === 'subscriptionLinks') {
-            if (!value.protocol) {
-                context.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    message: 'Protocol is required',
-                    path: ['protocol']
-                })
-            }
+        const error = getCustomLinkUriError(value.uri)
+        if (error) {
+            context.addIssue({ code: z.ZodIssueCode.custom, message: error, path: ['uri'] })
             return
         }
-        const error =
-            value.mode === 'template' ? templateError(value.uri) : getCustomLinkUriError(value.uri)
-        if (error) context.addIssue({ code: z.ZodIssueCode.custom, message: error, path: ['uri'] })
+
+        const usesHttp = /^https?:/iu.test(value.uri)
+        if (value.mode === 'literal' && !usesHttp) {
+            context.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Header link must use HTTP(S)',
+                path: ['uri']
+            })
+        }
+        if (value.mode === 'subscriptionLinks' && usesHttp) {
+            context.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Connection link must use a non-HTTP URI scheme',
+                path: ['uri']
+            })
+        }
     })
 
 export const SubscriptionPageConfigSchema = z.unknown().transform((input, context) => {
@@ -150,7 +129,7 @@ export const SubscriptionPageConfigSchema = z.unknown().transform((input, contex
     if (!base.success || !links.success) return z.NEVER
 
     links.data.forEach((link, index) => {
-        if (link.mode !== 'subscriptionLinks' && /^https?:/iu.test(link.uri)) {
+        if (link.mode === 'literal') {
             for (const locale of base.data.locales) {
                 if (!link.displayName[locale]) {
                     context.addIssue({
@@ -184,37 +163,14 @@ export const isHttpCustomLinkUri = (uri: string): boolean => {
 
 export const resolveCustomLinks = (
     config: TSubscriptionPageConfig,
-    subscription: { links: string[]; user: { shortUuid: string; username: string } },
-    locale: string,
-    subscriptionUrl: string
+    locale: string
 ): ResolvedCustomLink[] => {
-    const values = {
-        username: subscription.user.username,
-        shortUuid: subscription.user.shortUuid,
-        subscriptionUrl
-    }
-
     return config.customLinks
         .filter((link) => link.enabled)
         .sort((left, right) => left.order - right.order)
         .flatMap((link) => {
             const name = link.displayName[locale] ?? Object.values(link.displayName)[0] ?? 'Link'
-            let candidates: string[]
-            if (link.mode === 'subscriptionLinks') {
-                candidates = subscription.links.filter(
-                    (uri) => SCHEME_PATTERN.exec(uri)?.[1]?.toLowerCase() === link.protocol
-                )
-            } else {
-                // prettier-ignore
-                candidates = [
-                    link.mode === 'template'
-                        ? link.uri.replace(
-                            /\{\{(username|shortUuid|subscriptionUrl)\}\}/gu,
-                            (_, key: keyof typeof values) => values[key]
-                        )
-                        : link.uri
-                ]
-            }
+            const candidates = [link.uri]
 
             return candidates
                 .filter((uri) => getCustomLinkUriError(uri) === null)

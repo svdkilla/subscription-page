@@ -8,9 +8,7 @@ import {
     resolveCustomLinks,
     ResolvedCustomLink
 } from '@shared/utils/custom-links'
-import { constructSubscriptionUrl } from '@shared/utils/construct-subscription-url'
 import { useAppConfig, useCurrentLang } from '@entities/app-config-store'
-import { useSubscription } from '@entities/subscription-info-store'
 import { vibrate } from '@shared/utils/vibrate'
 import { SafeSvg } from '@shared/ui/safe-svg'
 
@@ -28,14 +26,7 @@ const LinkIcon = ({ link }: { link: ResolvedCustomLink }) => {
 export function HeaderCustomLinksWidget() {
     const config = useAppConfig()
     const locale = useCurrentLang()
-    const subscription = useSubscription()
-    const subscriptionUrl = constructSubscriptionUrl(
-        window.location.href,
-        subscription.user.shortUuid
-    )
-    const links = resolveCustomLinks(config, subscription, locale, subscriptionUrl).filter((link) =>
-        isHttpCustomLinkUri(link.uri)
-    )
+    const links = resolveCustomLinks(config, locale).filter((link) => isHttpCustomLinkUri(link.uri))
 
     if (links.length === 0) return null
 

@@ -135,12 +135,32 @@ describe('subscription-page custom link security', () => {
                 enabled: true,
                 uri: 'awg://opaque-payload#Name-from-fragment',
                 order: 0,
-                mode: 'literal',
+                mode: 'subscriptionLinks',
             },
         ] as typeof config.customLinks;
 
         const parsed = SubscriptionPageConfigSchema.parse(config);
         expect(parsed.customLinks[0]?.displayName).toEqual({});
         expect(parsed.customLinks[0]?.action).toBe('copy');
+    });
+
+    it('removes personalized templates and separates link destinations', () => {
+        const config = createSubpageConfigFixture();
+        const base = {
+            id: 'test-link',
+            enabled: true,
+            displayName: { en: 'Test' },
+            action: 'open',
+            order: 0,
+        };
+
+        for (const customLink of [
+            { ...base, mode: 'template', uri: 'https://example.com/{{username}}' },
+            { ...base, mode: 'literal', uri: 'vless://opaque#Wrong' },
+            { ...base, mode: 'subscriptionLinks', uri: 'https://example.com/wrong' },
+        ]) {
+            config.customLinks = [customLink] as typeof config.customLinks;
+            expect(SubscriptionPageConfigSchema.safeParse(config).success).toBe(false);
+        }
     });
 });

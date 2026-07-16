@@ -78,7 +78,8 @@ export const E2E_SUBSCRIPTION_RESPONSE = {
         },
         links: [
             'vless://secret@example.com:443?security=tls#E2E-VLESS',
-            'hy2://secret@example.com:443#E2E-HY2'
+            'hy2://secret@example.com:443#E2E-HY2',
+            'myvpn+test://opaque-marker#E2E-CUSTOM-LAST'
         ],
         ssConfLinks: {},
         subscriptionUrl: 'https://example.com/e2e-short-uuid'
