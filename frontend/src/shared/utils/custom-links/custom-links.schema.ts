@@ -110,18 +110,39 @@ export const CustomLinkSchema = z
         }
     })
 
-const isRemovedLegacyCustomLink = (value: unknown): boolean => {
-    if (!value || typeof value !== 'object') return false
+const normalizeLegacyCustomLink = (value: unknown): null | unknown => {
+    if (!value || typeof value !== 'object') return value
     const link = value as Record<string, unknown>
-    return (
-        link.mode === 'template' ||
-        (link.mode === 'subscriptionLinks' && typeof link.protocol === 'string')
-    )
+
+    if (link.mode === 'template') return null
+
+    if (link.mode === 'subscriptionLinks' && typeof link.protocol === 'string') {
+        const normalizedLink = { ...link }
+        delete normalizedLink.protocol
+        if (
+            typeof normalizedLink.uri === 'string' &&
+            !/^https?:/iu.test(normalizedLink.uri) &&
+            getCustomLinkUriError(normalizedLink.uri) === null
+        ) {
+            return normalizedLink
+        }
+        return null
+    }
+
+    return value
+}
+
+const normalizeLegacyCustomLinks = (value: unknown): unknown => {
+    if (!Array.isArray(value)) return value
+
+    return value.flatMap((link) => {
+        const normalizedLink = normalizeLegacyCustomLink(link)
+        return normalizedLink === null ? [] : [normalizedLink]
+    })
 }
 
 const CustomLinksSchema = z.preprocess(
-    (value) =>
-        Array.isArray(value) ? value.filter((link) => !isRemovedLegacyCustomLink(link)) : value,
+    normalizeLegacyCustomLinks,
     z.array(CustomLinkSchema).max(50)
 )
 
@@ -140,21 +161,20 @@ export const SubscriptionPageConfigSchema = z.unknown().transform((input, contex
     }
     if (!base.success || !links.success) return z.NEVER
 
-    links.data.forEach((link, index) => {
-        if (link.mode === 'literal') {
-            for (const locale of base.data.locales) {
-                if (!link.displayName[locale]) {
-                    context.addIssue({
-                        code: z.ZodIssueCode.custom,
-                        message: 'Missing localized display name',
-                        path: ['customLinks', index, 'displayName', locale]
-                    })
-                }
+    const publicHeaderLinks = links.data.filter((link) => link.mode === 'literal')
+    publicHeaderLinks.forEach((link, index) => {
+        for (const locale of base.data.locales) {
+            if (!link.displayName[locale]) {
+                context.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'Missing localized display name',
+                    path: ['customLinks', index, 'displayName', locale]
+                })
             }
         }
     })
 
-    return { ...base.data, customLinks: links.data }
+    return { ...base.data, customLinks: publicHeaderLinks }
 })
 
 export type TSubscriptionPageCustomLink = z.infer<typeof CustomLinkSchema>

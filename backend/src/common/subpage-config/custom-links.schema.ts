@@ -340,18 +340,36 @@ const CustomLinkSchema = z
         }
     });
 
-const isRemovedLegacyCustomLink = (value: unknown): boolean => {
-    if (!value || typeof value !== 'object') return false;
+const normalizeLegacyCustomLink = (value: unknown): unknown | null => {
+    if (!value || typeof value !== 'object') return value;
     const link = value as Record<string, unknown>;
-    return (
-        link.mode === 'template' ||
-        (link.mode === 'subscriptionLinks' && typeof link.protocol === 'string')
-    );
+
+    if (link.mode === 'template') return null;
+
+    if (link.mode === 'subscriptionLinks' && typeof link.protocol === 'string') {
+        const normalizedLink = { ...link };
+        delete normalizedLink.protocol;
+        if (
+            typeof normalizedLink.uri === 'string' &&
+            !/^https?:/iu.test(normalizedLink.uri) &&
+            getCustomLinkUriError(normalizedLink.uri) === null
+        ) {
+            return normalizedLink;
+        }
+        return null;
+    }
+
+    return value;
 };
 
 const CustomLinksSchema = z.preprocess(
     (value) =>
-        Array.isArray(value) ? value.filter((link) => !isRemovedLegacyCustomLink(link)) : value,
+        Array.isArray(value)
+            ? value.flatMap((link) => {
+                  const normalizedLink = normalizeLegacyCustomLink(link);
+                  return normalizedLink === null ? [] : [normalizedLink];
+              })
+            : value,
     z.array(CustomLinkSchema).max(50),
 );
 
@@ -468,16 +486,15 @@ export const SubscriptionPageConfigSchema = z.unknown().transform((input, contex
         return z.NEVER;
     }
     const validSvgKeys = new Set(Object.keys(svgLibrary));
-    customLinksResult.data.forEach((link, index) => {
-        if (link.mode === 'literal') {
-            for (const locale of sanitizedBaseConfig.locales) {
-                if (!link.displayName[locale]) {
-                    context.addIssue({
-                        code: z.ZodIssueCode.custom,
-                        message: `Missing required locale '${locale}'`,
-                        path: ['customLinks', index, 'displayName', locale],
-                    });
-                }
+    const publicHeaderLinks = customLinksResult.data.filter((link) => link.mode === 'literal');
+    publicHeaderLinks.forEach((link, index) => {
+        for (const locale of sanitizedBaseConfig.locales) {
+            if (!link.displayName[locale]) {
+                context.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: `Missing required locale '${locale}'`,
+                    path: ['customLinks', index, 'displayName', locale],
+                });
             }
         }
         if (link.iconKey && !validSvgKeys.has(link.iconKey)) {
@@ -489,7 +506,7 @@ export const SubscriptionPageConfigSchema = z.unknown().transform((input, contex
         }
     });
 
-    return { ...sanitizedBaseConfig, svgLibrary, customLinks: customLinksResult.data };
+    return { ...sanitizedBaseConfig, svgLibrary, customLinks: publicHeaderLinks };
 });
 
 export type TSubscriptionPageCustomLink = z.infer<typeof CustomLinkSchema>;

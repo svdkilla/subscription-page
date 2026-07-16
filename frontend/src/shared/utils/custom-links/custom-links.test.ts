@@ -43,7 +43,7 @@ describe('subscription-page custom links', () => {
         expect(getCustomLinkUriError(uri)).toBeNull()
     })
 
-    it('accepts connection links without presentation metadata', () => {
+    it('accepts connection links but keeps them out of public app config', () => {
         const config = getE2EAppConfig(1)
         ;(config as { customLinks: unknown[] }).customLinks = [
             {
@@ -56,8 +56,24 @@ describe('subscription-page custom links', () => {
         ]
 
         const parsed = SubscriptionPageConfigSchema.parse(config)
-        expect(parsed.customLinks[0]?.displayName).toEqual({})
-        expect(parsed.customLinks[0]?.action).toBe('copy')
+        expect(parsed.customLinks).toEqual([])
+    })
+
+    it('does not expose private internal-squad selectors to the page', () => {
+        const config = getE2EAppConfig(1)
+        ;(config as { customLinks: unknown[] }).customLinks = [
+            {
+                id: 'private-audience',
+                enabled: true,
+                uri: 'vless://test-marker@example.com:443#Private-audience',
+                order: 0,
+                mode: 'subscriptionLinks',
+                internalSquadUuids: ['11111111-1111-4111-8111-111111111111']
+            }
+        ]
+
+        const parsed = SubscriptionPageConfigSchema.parse(config)
+        expect(parsed.customLinks).toEqual([])
     })
 
     it('removes legacy modes and rejects mixed destinations', () => {
@@ -81,6 +97,17 @@ describe('subscription-page custom links', () => {
             }
         ]
         expect(SubscriptionPageConfigSchema.parse(config).customLinks).toEqual([])
+        ;(config as { customLinks: unknown[] }).customLinks = [
+            {
+                ...base,
+                id: 'complete-legacy-link',
+                mode: 'subscriptionLinks',
+                protocol: 'vless',
+                uri: 'vless://test-marker@example.com:443#Legacy'
+            }
+        ]
+        const migrated = SubscriptionPageConfigSchema.parse(config)
+        expect(migrated.customLinks).toEqual([])
 
         for (const customLink of [
             { ...base, mode: 'literal', uri: 'vless://opaque#Wrong' },
