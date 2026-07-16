@@ -154,6 +154,21 @@ describe('SubpageConfigService cache-aside behavior', () => {
         ).rejects.toBeInstanceOf(UnauthorizedException);
     });
 
+    it('round-trips the encrypted default config selector', async () => {
+        const { axios, service } = createService();
+        const encryptedDefaultUuid = service.getEncryptedSubpageConfigUuid(null);
+        axios.getSubscriptionPageConfigByUuid.mockResolvedValue({
+            isOk: true,
+            response: { config: createSubpageConfigFixture() },
+        });
+
+        await service.getSubscriptionPageConfig(encryptedDefaultUuid);
+
+        expect(axios.getSubscriptionPageConfigByUuid).toHaveBeenCalledWith(
+            '00000000-0000-0000-0000-000000000000',
+        );
+    });
+
     it('does not accept a plain config UUID as an app-config selector', async () => {
         const { service } = createService();
         await expect(

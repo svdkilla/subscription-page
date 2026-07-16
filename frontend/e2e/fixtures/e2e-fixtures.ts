@@ -47,33 +47,12 @@ export const getE2EAppConfig = (version: number) => ({
     platforms: {},
     customLinks: [
         {
-            id: 'vless-qr',
-            enabled: true,
-            displayName: { en: 'VLESS QR' },
-            uri: '',
-            action: 'qr',
-            iconKey: 'Link',
-            order: 0,
-            mode: 'subscriptionLinks',
-            protocol: 'vless'
-        },
-        {
-            id: 'hy2-copy',
-            enabled: true,
-            displayName: { en: 'HY2 Copy' },
-            uri: '',
-            action: 'copy',
-            order: 1,
-            mode: 'subscriptionLinks',
-            protocol: 'hy2'
-        },
-        {
             id: 'help-open',
             enabled: true,
             displayName: { en: 'Open help' },
             uri: 'https://example.com/help',
             action: 'open',
-            order: 2,
+            order: 0,
             mode: 'literal'
         }
     ]

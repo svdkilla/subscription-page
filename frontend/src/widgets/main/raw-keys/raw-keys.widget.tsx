@@ -130,6 +130,7 @@ export const RawKeysWidget = ({ isMobile }: IProps) => {
                                         <CopyButton value={link.fullLink}>
                                             {({ copied, copy }) => (
                                                 <ActionIcon
+                                                    aria-label="Copy connection key"
                                                     color={copied ? 'teal' : 'gray'}
                                                     onClick={() => {
                                                         vibrate('drop')
@@ -148,6 +149,7 @@ export const RawKeysWidget = ({ isMobile }: IProps) => {
                                         </CopyButton>
 
                                         <ActionIcon
+                                            aria-label="Show connection key QR code"
                                             color="cyan"
                                             onClick={() => {
                                                 vibrate('tap')

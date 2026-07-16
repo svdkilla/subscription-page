@@ -8,18 +8,15 @@ import {
 
 export const CUSTOM_LINK_ACTIONS = ['open', 'copy', 'qr'] as const;
 export const CUSTOM_LINK_MODES = ['literal', 'template', 'subscriptionLinks'] as const;
-export const ALLOWED_CUSTOM_LINK_SCHEMES = [
-    'https',
-    'http',
-    'vless',
-    'vmess',
-    'trojan',
-    'ss',
-    'hysteria2',
-    'hy2',
-    'tuic',
-    'wireguard',
-    'sub',
+export const BLOCKED_CUSTOM_LINK_SCHEMES = [
+    'about',
+    'blob',
+    'data',
+    'file',
+    'filesystem',
+    'javascript',
+    'vbscript',
+    'view-source',
 ] as const;
 export const CUSTOM_LINK_SUBSCRIPTION_PROTOCOLS = [
     'vless',
@@ -44,7 +41,7 @@ const SCHEME_PATTERN = /^([A-Za-z][A-Za-z0-9+.-]*):/u;
 const PERCENT_ESCAPE_PATTERN = /%[0-9A-Fa-f]{2}/u;
 const TEMPLATE_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/gu;
 const ALLOWED_TEMPLATE_VARIABLES = new Set(['shortUuid', 'subscriptionUrl', 'username']);
-const allowedSchemes = new Set<string>(ALLOWED_CUSTOM_LINK_SCHEMES);
+const blockedSchemes = new Set<string>(BLOCKED_CUSTOM_LINK_SCHEMES);
 const SVG_ALLOWED_TAGS = [
     'svg',
     'g',
@@ -283,7 +280,7 @@ export const getCustomLinkUriError = (value: string): string | null => {
     const match = SCHEME_PATTERN.exec(value);
     if (!match) return 'URI must start with an explicit allowed scheme';
     const scheme = match[1]!.toLowerCase();
-    if (!allowedSchemes.has(scheme)) return `URI scheme '${scheme}' is not allowed`;
+    if (blockedSchemes.has(scheme)) return `URI scheme '${scheme}' is not allowed`;
 
     if (scheme === 'http' || scheme === 'https') {
         try {
@@ -331,20 +328,23 @@ const CustomLinkSchema = z
             .max(64)
             .regex(/^[A-Za-z0-9_-]+$/u),
         enabled: z.boolean().default(true),
-        displayName: z.record(
-            z.string().regex(/^[a-z]{2}$/u),
-            z
-                .string()
-                .trim()
-                .min(1)
-                .max(100)
-                .refine(
-                    (value) => !HTML_DELIMITERS.test(value),
-                    'Display name must not contain HTML',
-                ),
-        ),
+        displayName: z
+            .record(
+                z.string().regex(/^[a-z]{2}$/u),
+                z
+                    .string()
+                    .trim()
+                    .min(1)
+                    .max(100)
+                    .refine(
+                        (value) => !HTML_DELIMITERS.test(value),
+                        'Display name must not contain HTML',
+                    ),
+            )
+            .optional()
+            .default({}),
         uri: z.string().default(''),
-        action: z.enum(CUSTOM_LINK_ACTIONS),
+        action: z.enum(CUSTOM_LINK_ACTIONS).default('copy'),
         iconKey: z.string().optional(),
         order: z.number().int().min(0).max(10_000),
         mode: z.enum(CUSTOM_LINK_MODES).default('literal'),
@@ -485,13 +485,15 @@ export const SubscriptionPageConfigSchema = z.unknown().transform((input, contex
     }
     const validSvgKeys = new Set(Object.keys(svgLibrary));
     customLinksResult.data.forEach((link, index) => {
-        for (const locale of sanitizedBaseConfig.locales) {
-            if (!link.displayName[locale]) {
-                context.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    message: `Missing required locale '${locale}'`,
-                    path: ['customLinks', index, 'displayName', locale],
-                });
+        if (link.mode !== 'subscriptionLinks' && /^https?:/iu.test(link.uri)) {
+            for (const locale of sanitizedBaseConfig.locales) {
+                if (!link.displayName[locale]) {
+                    context.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: `Missing required locale '${locale}'`,
+                        path: ['customLinks', index, 'displayName', locale],
+                    });
+                }
             }
         }
         if (link.iconKey && !validSvgKeys.has(link.iconKey)) {

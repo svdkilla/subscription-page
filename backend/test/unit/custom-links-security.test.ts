@@ -9,6 +9,9 @@ describe('subscription-page custom link security', () => {
         'vless://id@example.com:443?security=tls',
         'hysteria2://secret@example.com:443',
         'hy2://secret@example.com:443',
+        'wg://opaque-payload#WG',
+        'awg://opaque-payload#AWG',
+        'myvpn+test://anything-the-client-understands#Custom',
         'https://example.com/path',
     ])('accepts an allowed URI: %s', (uri) => {
         expect(getCustomLinkUriError(uri)).toBeNull();
@@ -122,5 +125,22 @@ describe('subscription-page custom link security', () => {
             },
         };
         expect(SubscriptionPageConfigSchema.safeParse(config).success).toBe(true);
+    });
+
+    it('accepts a connection link without presentation metadata', () => {
+        const config = createSubpageConfigFixture();
+        config.customLinks = [
+            {
+                id: 'connection-only',
+                enabled: true,
+                uri: 'awg://opaque-payload#Name-from-fragment',
+                order: 0,
+                mode: 'literal',
+            },
+        ] as typeof config.customLinks;
+
+        const parsed = SubscriptionPageConfigSchema.parse(config);
+        expect(parsed.customLinks[0]?.displayName).toEqual({});
+        expect(parsed.customLinks[0]?.action).toBe('copy');
     });
 });

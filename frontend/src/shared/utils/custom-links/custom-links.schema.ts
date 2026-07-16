@@ -1,18 +1,15 @@
 import { SubscriptionPageRawConfigSchema } from '@remnawave/subscription-page-types'
 import { z } from 'zod'
 
-export const ALLOWED_CUSTOM_LINK_SCHEMES = [
-    'https',
-    'http',
-    'vless',
-    'vmess',
-    'trojan',
-    'ss',
-    'hysteria2',
-    'hy2',
-    'tuic',
-    'wireguard',
-    'sub'
+export const BLOCKED_CUSTOM_LINK_SCHEMES = [
+    'about',
+    'blob',
+    'data',
+    'file',
+    'filesystem',
+    'javascript',
+    'vbscript',
+    'view-source'
 ] as const
 export const CUSTOM_LINK_SUBSCRIPTION_PROTOCOLS = [
     'vless',
@@ -36,7 +33,7 @@ const hasControlCharacters = (value: string): boolean =>
 const SCHEME_PATTERN = /^([A-Za-z][A-Za-z0-9+.-]*):/u
 const PERCENT_ESCAPE_PATTERN = /%[0-9A-Fa-f]{2}/u
 const TEMPLATE_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/gu
-const allowedSchemes = new Set<string>(ALLOWED_CUSTOM_LINK_SCHEMES)
+const blockedSchemes = new Set<string>(BLOCKED_CUSTOM_LINK_SCHEMES)
 const allowedVariables = new Set(['shortUuid', 'subscriptionUrl', 'username'])
 
 const decodedVariants = (value: string): null | string[] => {
@@ -61,7 +58,7 @@ export const getCustomLinkUriError = (value: string): null | string => {
     const match = SCHEME_PATTERN.exec(value)
     if (!match) return 'Invalid URI'
     const scheme = match[1]!.toLowerCase()
-    if (!allowedSchemes.has(scheme)) return 'Invalid URI'
+    if (blockedSchemes.has(scheme)) return 'Invalid URI'
 
     if (scheme === 'http' || scheme === 'https') {
         try {
@@ -99,17 +96,20 @@ export const CustomLinkSchema = z
             .max(64)
             .regex(/^[A-Za-z0-9_-]+$/u),
         enabled: z.boolean().default(true),
-        displayName: z.record(
-            z.string().regex(/^[a-z]{2}$/u),
-            z
-                .string()
-                .trim()
-                .min(1)
-                .max(100)
-                .refine((value) => !HTML_DELIMITERS.test(value))
-        ),
+        displayName: z
+            .record(
+                z.string().regex(/^[a-z]{2}$/u),
+                z
+                    .string()
+                    .trim()
+                    .min(1)
+                    .max(100)
+                    .refine((value) => !HTML_DELIMITERS.test(value))
+            )
+            .optional()
+            .default({}),
         uri: z.string().default(''),
-        action: z.enum(['open', 'copy', 'qr']),
+        action: z.enum(['open', 'copy', 'qr']).default('copy'),
         iconKey: z.string().optional(),
         order: z.number().int().min(0).max(10_000),
         mode: z.enum(['literal', 'template', 'subscriptionLinks']).default('literal'),
@@ -150,13 +150,15 @@ export const SubscriptionPageConfigSchema = z.unknown().transform((input, contex
     if (!base.success || !links.success) return z.NEVER
 
     links.data.forEach((link, index) => {
-        for (const locale of base.data.locales) {
-            if (!link.displayName[locale]) {
-                context.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    message: 'Missing localized display name',
-                    path: ['customLinks', index, 'displayName', locale]
-                })
+        if (link.mode !== 'subscriptionLinks' && /^https?:/iu.test(link.uri)) {
+            for (const locale of base.data.locales) {
+                if (!link.displayName[locale]) {
+                    context.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: 'Missing localized display name',
+                        path: ['customLinks', index, 'displayName', locale]
+                    })
+                }
             }
         }
     })
