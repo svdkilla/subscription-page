@@ -16,8 +16,12 @@ import { IconCheck, IconCopy, IconExternalLink, IconLink, IconQrcode } from '@ta
 import { modals } from '@mantine/modals'
 import { renderSVG } from 'uqr'
 
+import {
+    isHttpCustomLinkUri,
+    resolveCustomLinks,
+    ResolvedCustomLink
+} from '@shared/utils/custom-links'
 import { constructSubscriptionUrl } from '@shared/utils/construct-subscription-url'
-import { resolveCustomLinks, ResolvedCustomLink } from '@shared/utils/custom-links'
 import { useAppConfig, useCurrentLang } from '@entities/app-config-store'
 import { useSubscription } from '@entities/subscription-info-store'
 import { vibrate } from '@shared/utils/vibrate'
@@ -47,7 +51,9 @@ export function CustomLinksWidget({ isMobile }: Props) {
         window.location.href,
         subscription.user.shortUuid
     )
-    const links = resolveCustomLinks(config, subscription, locale, subscriptionUrl)
+    const links = resolveCustomLinks(config, subscription, locale, subscriptionUrl).filter(
+        (link) => !isHttpCustomLinkUri(link.uri)
+    )
 
     if (links.length === 0) return null
 

@@ -5,6 +5,7 @@ import {
     AccordionBlockRenderer,
     CardsBlockRenderer,
     CustomLinksWidget,
+    HeaderCustomLinksWidget,
     InstallationGuideConnector,
     MinimalBlockRenderer,
     RawKeysWidget,
@@ -70,7 +71,7 @@ export const MainPageComponent = ({ isMobile, platform }: IMainPageComponentProp
         <Page>
             <Box className="header-wrapper" py="md">
                 <Container maw={1200} px={{ base: 'md', sm: 'lg', md: 'xl' }}>
-                    <Group justify="space-between">
+                    <Group align="flex-start" justify="space-between" wrap="wrap">
                         <Group gap="sm" style={{ userSelect: 'none' }} wrap="nowrap">
                             {hasCustomLogo ? (
                                 <Image
@@ -96,10 +97,13 @@ export const MainPageComponent = ({ isMobile, platform }: IMainPageComponentProp
                             </Title>
                         </Group>
 
-                        <SubscriptionLinkWidget
-                            hideGetLink={config.baseSettings.hideGetLinkButton}
-                            supportUrl={config.brandingSettings.supportUrl}
-                        />
+                        <Group gap="xs" justify="flex-end" wrap="wrap">
+                            <HeaderCustomLinksWidget />
+                            <SubscriptionLinkWidget
+                                hideGetLink={config.baseSettings.hideGetLinkButton}
+                                supportUrl={config.brandingSettings.supportUrl}
+                            />
+                        </Group>
                     </Group>
                 </Container>
             </Box>

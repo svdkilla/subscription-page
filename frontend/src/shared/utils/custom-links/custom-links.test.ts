@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
     getCustomLinkUriError,
+    isHttpCustomLinkUri,
     resolveCustomLinks,
     SubscriptionPageConfigSchema
 } from './custom-links.schema'
@@ -31,5 +32,11 @@ describe('subscription-page custom links', () => {
         const oldConfig = getE2EAppConfig(1)
         const { customLinks: _customLinks, ...withoutCustomLinks } = oldConfig
         expect(SubscriptionPageConfigSchema.parse(withoutCustomLinks).customLinks).toEqual([])
+    })
+
+    it('separates website links for the page header from VPN links', () => {
+        expect(isHttpCustomLinkUri('https://example.com/help')).toBe(true)
+        expect(isHttpCustomLinkUri('http://example.com/help')).toBe(true)
+        expect(isHttpCustomLinkUri('vless://id@example.com:443')).toBe(false)
     })
 })

@@ -8,7 +8,7 @@ test('renders safe custom VPN actions and refreshes changed config on focus', as
     await expect(page).toHaveTitle('Subscription E2E')
     await expect(page.getByText('VLESS QR')).toBeVisible()
     await expect(page.getByText('HY2 Copy')).toBeVisible()
-    await expect(page.getByText('Open help')).toBeVisible()
+    await expect(page.locator('.header-wrapper').getByText('Open help')).toBeVisible()
 
     expect(
         await page.evaluate(() => ({
@@ -42,6 +42,7 @@ test('keeps custom-link actions usable on a narrow viewport', async ({ page }) =
     await page.goto('/e2e-short-uuid')
 
     await expect(page.getByText('VLESS QR')).toBeVisible()
+    await expect(page.locator('.header-wrapper').getByText('Open help')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Show custom link QR code' })).toBeVisible()
     expect(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)

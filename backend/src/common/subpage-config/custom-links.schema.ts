@@ -124,6 +124,7 @@ const BUTTON_APP_SCHEMES = new Set([
     'hiddify',
     'http',
     'https',
+    'incy',
     'koala-clash',
     'prizrak-box',
     'shadowrocket',

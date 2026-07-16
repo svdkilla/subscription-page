@@ -147,8 +147,10 @@ describe('SubpageConfigService cache-aside behavior', () => {
         expect(axios.getSubscriptionPageConfigByUuid).toHaveBeenCalledWith(
             '11111111-1111-4111-8111-111111111111',
         );
+        const tamperedBytes = Buffer.from(encryptedUuid, 'base64url');
+        tamperedBytes[0] ^= 1;
         await expect(
-            service.getSubscriptionPageConfig(`${encryptedUuid.slice(0, -1)}A`),
+            service.getSubscriptionPageConfig(tamperedBytes.toString('base64url')),
         ).rejects.toBeInstanceOf(UnauthorizedException);
     });
 

@@ -9,6 +9,7 @@ describe('installation button URI validation', () => {
     it.each([
         ['https://example.com/app', 'external'],
         ['happ://add/https://subscription.invalid/test', 'subscriptionLink'],
+        ['incy://import/https://subscription.invalid/test', 'subscriptionLink'],
         ['stash://install-config?url=https://subscription.invalid/test', 'copyButton']
     ] as const)('accepts %s for %s', (uri, type) => {
         expect(getSafeButtonUri(uri, type)).toBe(uri)

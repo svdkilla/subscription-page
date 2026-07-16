@@ -88,4 +88,39 @@ describe('subscription-page custom link security', () => {
         };
         expect(SubscriptionPageConfigSchema.safeParse(config).success).toBe(false);
     });
+
+    it('keeps existing Incy installation buttons compatible', () => {
+        const config = createSubpageConfigFixture() as {
+            platforms: Record<string, unknown>;
+        } & ReturnType<typeof createSubpageConfigFixture>;
+        config.platforms = {
+            ios: {
+                displayName: { en: 'iOS' },
+                svgIconKey: 'Link',
+                apps: [
+                    {
+                        name: 'Incy',
+                        featured: false,
+                        blocks: [
+                            {
+                                svgIconKey: 'Link',
+                                svgIconColor: 'blue',
+                                title: { en: 'Install' },
+                                description: { en: 'Test' },
+                                buttons: [
+                                    {
+                                        link: 'incy://import/https://subscription.invalid/test',
+                                        type: 'subscriptionLink',
+                                        text: { en: 'Open' },
+                                        svgIconKey: 'Link',
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
+        };
+        expect(SubscriptionPageConfigSchema.safeParse(config).success).toBe(true);
+    });
 });

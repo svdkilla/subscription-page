@@ -175,6 +175,11 @@ export interface ResolvedCustomLink {
     uri: string
 }
 
+export const isHttpCustomLinkUri = (uri: string): boolean => {
+    const scheme = SCHEME_PATTERN.exec(uri)?.[1]?.toLowerCase()
+    return scheme === 'http' || scheme === 'https'
+}
+
 export const resolveCustomLinks = (
     config: TSubscriptionPageConfig,
     subscription: { links: string[]; user: { shortUuid: string; username: string } },
