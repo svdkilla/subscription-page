@@ -110,16 +110,28 @@ export const CustomLinkSchema = z
         }
     })
 
+const isRemovedLegacyCustomLink = (value: unknown): boolean => {
+    if (!value || typeof value !== 'object') return false
+    const link = value as Record<string, unknown>
+    return (
+        link.mode === 'template' ||
+        (link.mode === 'subscriptionLinks' && typeof link.protocol === 'string')
+    )
+}
+
+const CustomLinksSchema = z.preprocess(
+    (value) =>
+        Array.isArray(value) ? value.filter((link) => !isRemovedLegacyCustomLink(link)) : value,
+    z.array(CustomLinkSchema).max(50)
+)
+
 export const SubscriptionPageConfigSchema = z.unknown().transform((input, context) => {
     const base = SubscriptionPageRawConfigSchema.safeParse(input)
-    const links = z
-        .array(CustomLinkSchema)
-        .max(50)
-        .safeParse(
-            input && typeof input === 'object' && 'customLinks' in input
-                ? ((input as { customLinks?: unknown }).customLinks ?? [])
-                : []
-        )
+    const links = CustomLinksSchema.safeParse(
+        input && typeof input === 'object' && 'customLinks' in input
+            ? ((input as { customLinks?: unknown }).customLinks ?? [])
+            : []
+    )
     if (!base.success) base.error.issues.forEach((issue) => context.addIssue(issue))
     if (!links.success) {
         links.error.issues.forEach((issue) =>

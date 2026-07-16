@@ -60,7 +60,7 @@ describe('subscription-page custom links', () => {
         expect(parsed.customLinks[0]?.action).toBe('copy')
     })
 
-    it('rejects the removed template mode and mixed destinations', () => {
+    it('removes legacy modes and rejects mixed destinations', () => {
         const config = getE2EAppConfig(1)
         const base = {
             id: 'test-link',
@@ -70,8 +70,19 @@ describe('subscription-page custom links', () => {
             order: 0
         }
 
-        for (const customLink of [
+        ;(config as { customLinks: unknown[] }).customLinks = [
             { ...base, mode: 'template', uri: 'https://example.com/{{username}}' },
+            {
+                ...base,
+                id: 'old-selector',
+                mode: 'subscriptionLinks',
+                protocol: 'vless',
+                uri: 'https://'
+            }
+        ]
+        expect(SubscriptionPageConfigSchema.parse(config).customLinks).toEqual([])
+
+        for (const customLink of [
             { ...base, mode: 'literal', uri: 'vless://opaque#Wrong' },
             { ...base, mode: 'subscriptionLinks', uri: 'https://example.com/wrong' }
         ]) {

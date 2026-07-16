@@ -340,6 +340,21 @@ const CustomLinkSchema = z
         }
     });
 
+const isRemovedLegacyCustomLink = (value: unknown): boolean => {
+    if (!value || typeof value !== 'object') return false;
+    const link = value as Record<string, unknown>;
+    return (
+        link.mode === 'template' ||
+        (link.mode === 'subscriptionLinks' && typeof link.protocol === 'string')
+    );
+};
+
+const CustomLinksSchema = z.preprocess(
+    (value) =>
+        Array.isArray(value) ? value.filter((link) => !isRemovedLegacyCustomLink(link)) : value,
+    z.array(CustomLinkSchema).max(50),
+);
+
 const sanitizeSvgLibrary = (library: Record<string, string>): Record<string, string> =>
     Object.fromEntries(
         Object.entries(library).map(([key, source]) => {
@@ -375,14 +390,11 @@ const sanitizeSvgLibrary = (library: Record<string, string>): Record<string, str
 
 export const SubscriptionPageConfigSchema = z.unknown().transform((input, context) => {
     const baseResult = PublishedSubscriptionPageRawConfigSchema.safeParse(input);
-    const customLinksResult = z
-        .array(CustomLinkSchema)
-        .max(50)
-        .safeParse(
-            input && typeof input === 'object' && 'customLinks' in input
-                ? ((input as { customLinks?: unknown }).customLinks ?? [])
-                : [],
-        );
+    const customLinksResult = CustomLinksSchema.safeParse(
+        input && typeof input === 'object' && 'customLinks' in input
+            ? ((input as { customLinks?: unknown }).customLinks ?? [])
+            : [],
+    );
 
     if (!baseResult.success) baseResult.error.issues.forEach((issue) => context.addIssue(issue));
     if (!customLinksResult.success) {

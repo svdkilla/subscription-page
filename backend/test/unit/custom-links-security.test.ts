@@ -144,7 +144,7 @@ describe('subscription-page custom link security', () => {
         expect(parsed.customLinks[0]?.action).toBe('copy');
     });
 
-    it('removes personalized templates and separates link destinations', () => {
+    it('removes legacy selectors and templates while keeping destinations separate', () => {
         const config = createSubpageConfigFixture();
         const base = {
             id: 'test-link',
@@ -154,8 +154,20 @@ describe('subscription-page custom link security', () => {
             order: 0,
         };
 
-        for (const customLink of [
+        config.customLinks = [
             { ...base, mode: 'template', uri: 'https://example.com/{{username}}' },
+            {
+                ...base,
+                id: 'old-selector',
+                mode: 'subscriptionLinks',
+                protocol: 'vless',
+                uri: 'https://',
+            },
+        ] as typeof config.customLinks;
+        const parsed = SubscriptionPageConfigSchema.parse(config);
+        expect(parsed.customLinks).toEqual([]);
+
+        for (const customLink of [
             { ...base, mode: 'literal', uri: 'vless://opaque#Wrong' },
             { ...base, mode: 'subscriptionLinks', uri: 'https://example.com/wrong' },
         ]) {
