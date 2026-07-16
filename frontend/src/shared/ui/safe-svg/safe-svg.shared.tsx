@@ -63,13 +63,12 @@ const ALLOWED_ATTR = [
 export const sanitizeSvgForDisplay = (source: string | undefined): string => {
     if (!source || source.length > 50_000) return ''
     return DOMPurify.sanitize(source, {
-        USE_PROFILES: { svg: true, svgFilters: false },
         ALLOWED_TAGS,
         ALLOWED_ATTR,
         FORBID_TAGS: ['script', 'foreignObject', 'iframe', 'object', 'embed', 'style', 'image'],
         FORBID_ATTR: ['style', 'href', 'xlink:href'],
         ALLOW_DATA_ATTR: false
-    })
+    }).replace(/\s+xmlns:xlink=(?:"[^"]*"|'[^']*')/giu, '')
 }
 
 interface Props {

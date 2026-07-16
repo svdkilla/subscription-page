@@ -25,11 +25,13 @@ const SENSITIVE_SEGMENTS = new Set([
     '.git',
     'backend',
     'dockerfile',
+    'etc',
     'node_modules',
     'package-lock.json',
     'package.json',
     'proc',
     'src',
+    'windows',
 ]);
 
 const decodePath = (rawPath: string): string | null => {
@@ -63,7 +65,8 @@ export function publicRequestGuardMiddleware(req: Request, res: Response, next: 
     if (
         (!isAppConfig && segments.some((segment) => segment === '..' || segment.startsWith('.'))) ||
         lowerSegments.some((segment) => SENSITIVE_SEGMENTS.has(segment)) ||
-        decoded.toLowerCase().endsWith('.map')
+        decoded.toLowerCase().endsWith('.map') ||
+        segments.some((segment) => /^[A-Za-z]:/u.test(segment))
     ) {
         res.status(404).json({ statusCode: 404, message: 'Not found' });
         return;
@@ -87,17 +90,26 @@ export const createHostGuardMiddleware = (allowedHostsValue: string | undefined)
     const allowedHosts = new Set(
         (allowedHostsValue ?? '')
             .split(',')
-            .map((host) => host.trim().toLowerCase())
-            .filter(Boolean),
+            .map((host) => parseHost(host.trim()))
+            .filter((host): host is string => Boolean(host)),
     );
 
     return (req: Request, res: Response, next: NextFunction) => {
         if (allowedHosts.size === 0) return next();
-        const host = req.hostname.toLowerCase();
-        if (!allowedHosts.has(host)) {
+        const host = parseHost(req.headers.host);
+        if (!host || !allowedHosts.has(host)) {
             res.status(400).json({ statusCode: 400, message: 'Invalid host' });
             return;
         }
         next();
     };
 };
+
+function parseHost(value: string | undefined): string | null {
+    if (!value || /[\s,@/\\]/u.test(value)) return null;
+    try {
+        return new URL(`http://${value}`).hostname.toLowerCase();
+    } catch {
+        return null;
+    }
+}

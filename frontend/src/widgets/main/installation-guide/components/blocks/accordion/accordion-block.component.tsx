@@ -3,8 +3,8 @@ import { IconChevronDown } from '@tabler/icons-react'
 import { useState } from 'react'
 
 import { getColorGradient, getLocalizedText } from '@shared/utils/config-parser'
+import { sanitizeLocalizedHtmlForDisplay, ThemeIconShared } from '@shared/ui'
 import { vibrate } from '@shared/utils/vibrate'
-import { ThemeIconShared } from '@shared/ui'
 
 import { IBlockRendererProps } from '../renderer-block.interface'
 import classes from './accordion-block.module.css'
@@ -55,7 +55,9 @@ export const AccordionBlockRenderer = ({
                                     <Text
                                         c="white"
                                         dangerouslySetInnerHTML={{
-                                            __html: getLocalizedText(block.title, currentLang)
+                                            __html: sanitizeLocalizedHtmlForDisplay(
+                                                getLocalizedText(block.title, currentLang)
+                                            )
                                         }}
                                         fw={600}
                                         size={isMobile ? 'sm' : 'md'}
@@ -72,7 +74,9 @@ export const AccordionBlockRenderer = ({
                             <Text
                                 c="dimmed"
                                 dangerouslySetInnerHTML={{
-                                    __html: getLocalizedText(block.description, currentLang)
+                                    __html: sanitizeLocalizedHtmlForDisplay(
+                                        getLocalizedText(block.description, currentLang)
+                                    )
                                 }}
                                 size={isMobile ? 'xs' : 'sm'}
                                 style={{ lineHeight: 1.7 }}

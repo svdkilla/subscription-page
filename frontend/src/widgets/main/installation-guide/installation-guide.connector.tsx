@@ -1,4 +1,9 @@
 import {
+    TSubscriptionPageAppConfig,
+    TSubscriptionPageButtonConfig,
+    TSubscriptionPagePlatformKey
+} from '@remnawave/subscription-page-types'
+import {
     Box,
     Button,
     ButtonVariant,
@@ -9,16 +14,12 @@ import {
     Title,
     UnstyledButton
 } from '@mantine/core'
-import {
-    TSubscriptionPageAppConfig,
-    TSubscriptionPageButtonConfig,
-    TSubscriptionPagePlatformKey
-} from '@remnawave/subscription-page-types'
 import { notifications } from '@mantine/notifications'
 import { useClipboard } from '@mantine/hooks'
 import { useState } from 'react'
 import clsx from 'clsx'
 
+import { getSafeButtonUri, openSafeExternalUri } from '@shared/utils/security/safe-button-uri'
 import { constructSubscriptionUrl } from '@shared/utils/construct-subscription-url'
 import { useSubscription } from '@entities/subscription-info-store'
 import { getIconFromLibrary } from '@shared/utils/config-parser'
@@ -94,8 +95,10 @@ export const InstallationGuideConnector = (props: IProps) => {
         switch (button.type) {
             case 'copyButton': {
                 if (!formattedUrl) return
+                const safeUrl = getSafeButtonUri(formattedUrl, button.type)
+                if (!safeUrl) return
 
-                copy(formattedUrl)
+                copy(safeUrl)
                 notifications.show({
                     title: t(baseTranslations.linkCopied),
                     message: t(baseTranslations.linkCopiedToClipboard),
@@ -104,13 +107,16 @@ export const InstallationGuideConnector = (props: IProps) => {
                 break
             }
             case 'external': {
-                window.open(button.link, '_blank')
+                const safeUrl = getSafeButtonUri(button.link, button.type)
+                if (!safeUrl) return
+                openSafeExternalUri(safeUrl)
                 break
             }
             case 'subscriptionLink': {
                 if (!formattedUrl) return
-
-                window.open(formattedUrl, '_blank')
+                const safeUrl = getSafeButtonUri(formattedUrl, button.type)
+                if (!safeUrl) return
+                openSafeExternalUri(safeUrl)
                 break
             }
             default:

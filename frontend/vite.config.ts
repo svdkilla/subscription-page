@@ -63,7 +63,7 @@ export default defineConfig({
             if (process.env.NODE_ENV === 'production') {
                 return {
                     root: viteConfig.root,
-                    panelData: '<%- panelData %>',
+                    panelData: '<%= panelData %>',
                     metaDescription: '<%= metaDescription %>',
                     metaTitle: '<%= metaTitle %>'
                 }

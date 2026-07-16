@@ -101,6 +101,43 @@ const SVG_ALLOWED_ATTRIBUTES = [
     'aria-hidden',
     'focusable',
 ];
+const LOCALIZED_HTML_ALLOWED_TAGS = [
+    'br',
+    'b',
+    'strong',
+    'i',
+    'em',
+    'u',
+    's',
+    'code',
+    'kbd',
+    'p',
+    'ul',
+    'ol',
+    'li',
+    'span',
+];
+const BUTTON_APP_SCHEMES = new Set([
+    'clashmeta',
+    'flclashx',
+    'happ',
+    'hiddify',
+    'http',
+    'https',
+    'koala-clash',
+    'prizrak-box',
+    'shadowrocket',
+    'stash',
+    'streisand',
+    'v2rayng',
+]);
+const BUTTON_TEMPLATE_VALUES: Record<string, string> = {
+    USERNAME: 'test-user',
+    SUBSCRIPTION_LINK: 'https://subscription.invalid/test-marker',
+    HAPP_CRYPT3_LINK: 'happ://crypt3/test-marker',
+    HAPP_CRYPT4_LINK: 'happ://crypt4/test-marker',
+};
+const BUTTON_TEMPLATE_PATTERN = /\{\{(\w+)\}\}/gu;
 
 const getDecodedVariants = (value: string): string[] | null => {
     if (!value.includes('%')) return [value];
@@ -110,6 +147,124 @@ const getDecodedVariants = (value: string): string[] | null => {
         return [value, once];
     } catch {
         return null;
+    }
+};
+
+const sanitizeLocalizedRecord = <T extends Record<string, string>>(record: T): T =>
+    Object.fromEntries(
+        Object.entries(record).map(([locale, source]) => [
+            locale,
+            DOMPurify.sanitize(source.slice(0, 4_096), {
+                ALLOWED_TAGS: LOCALIZED_HTML_ALLOWED_TAGS,
+                ALLOWED_ATTR: [],
+                ALLOW_ARIA_ATTR: false,
+                ALLOW_DATA_ATTR: false,
+                FORBID_TAGS: [
+                    'script',
+                    'style',
+                    'svg',
+                    'math',
+                    'iframe',
+                    'object',
+                    'embed',
+                    'form',
+                    'input',
+                    'button',
+                    'a',
+                    'img',
+                ],
+            }),
+        ]),
+    ) as T;
+
+const sanitizeLocalizedConfig = (
+    config: TPublishedSubscriptionPageRawConfig,
+): TPublishedSubscriptionPageRawConfig =>
+    ({
+        ...config,
+        baseTranslations: Object.fromEntries(
+            Object.entries(config.baseTranslations).map(([key, value]) => [
+                key,
+                sanitizeLocalizedRecord(value),
+            ]),
+        ),
+        platforms: Object.fromEntries(
+            Object.entries(config.platforms).map(([platformKey, platform]) => [
+                platformKey,
+                {
+                    ...platform,
+                    displayName: sanitizeLocalizedRecord(platform.displayName),
+                    apps: platform.apps.map((app) => ({
+                        ...app,
+                        blocks: app.blocks.map((block) => ({
+                            ...block,
+                            title: sanitizeLocalizedRecord(block.title),
+                            description: sanitizeLocalizedRecord(block.description),
+                            buttons: block.buttons.map((button) => ({
+                                ...button,
+                                text: sanitizeLocalizedRecord(button.text),
+                            })),
+                        })),
+                    })),
+                },
+            ]),
+        ),
+    }) as TPublishedSubscriptionPageRawConfig;
+
+const getButtonLinkError = (rawValue: string, type: string): string | null => {
+    if (!rawValue || rawValue.length > 4_096 || rawValue !== rawValue.trim()) {
+        return 'Button URI is missing, too long, or surrounded by whitespace';
+    }
+    const variants = getDecodedVariants(rawValue);
+    if (
+        !variants ||
+        variants.some((value) => hasControlCharacters(value) || HTML_DELIMITERS.test(value))
+    ) {
+        return 'Button URI contains unsafe or ambiguous encoding';
+    }
+
+    let unknownTemplate = false;
+    const value = rawValue.replace(BUTTON_TEMPLATE_PATTERN, (_match, key: string) => {
+        const replacement = BUTTON_TEMPLATE_VALUES[key];
+        if (!replacement) {
+            unknownTemplate = true;
+            return 'invalid-template-value';
+        }
+        return replacement;
+    });
+    if (unknownTemplate || value.includes('{{') || value.includes('}}')) {
+        return 'Button URI contains an unsupported template variable';
+    }
+
+    const match = SCHEME_PATTERN.exec(value);
+    if (!match) return 'Button URI must use an explicit scheme';
+    const scheme = match[1]!.toLowerCase();
+    const allowedSchemes = type === 'external' ? new Set(['http', 'https']) : BUTTON_APP_SCHEMES;
+    if (!allowedSchemes.has(scheme)) return `Button URI scheme '${scheme}' is not allowed`;
+
+    if (scheme === 'http' || scheme === 'https') {
+        try {
+            const parsed = new URL(value);
+            if (parsed.protocol !== `${scheme}:` || !parsed.hostname) {
+                return 'Button HTTP(S) URI must contain a valid host';
+            }
+        } catch {
+            return 'Button HTTP(S) URI is invalid';
+        }
+    }
+    return null;
+};
+
+const isSafeHttpUrl = (value: string, allowEmpty = false): boolean => {
+    if (allowEmpty && value === '') return true;
+    if (!value || value.length > 4_096 || value !== value.trim()) return false;
+    const variants = getDecodedVariants(value);
+    if (!variants || variants.some(hasControlCharacters)) return false;
+    try {
+        const parsed = new URL(value);
+        return ['http:', 'https:'].includes(parsed.protocol) && Boolean(parsed.hostname);
+    } catch {
+        return false;
     }
 };
 
@@ -223,7 +378,6 @@ const sanitizeSvgLibrary = (library: Record<string, string>): Record<string, str
                 throw new Error('SVG is outside the allowed size or document format');
             }
             const sanitized = DOMPurify.sanitize(source, {
-                USE_PROFILES: { svg: true, svgFilters: false },
                 ALLOWED_TAGS: SVG_ALLOWED_TAGS,
                 ALLOWED_ATTR: SVG_ALLOWED_ATTRIBUTES,
                 FORBID_TAGS: [
@@ -237,7 +391,7 @@ const sanitizeSvgLibrary = (library: Record<string, string>): Record<string, str
                 ],
                 FORBID_ATTR: ['style', 'href', 'xlink:href'],
                 ALLOW_DATA_ATTR: false,
-            });
+            }).replace(/\s+xmlns:xlink=(?:"[^"]*"|'[^']*')/giu, '');
             const elements = sanitized.match(/<[A-Za-z][^>]*>/gu)?.length ?? 0;
             if (!/^<svg(?:\s|>)/iu.test(sanitized) || elements > 256) {
                 throw new Error('SVG is invalid or too complex');
@@ -265,9 +419,61 @@ export const SubscriptionPageConfigSchema = z.unknown().transform((input, contex
     }
     if (!baseResult.success || !customLinksResult.success) return z.NEVER;
 
+    const sanitizedBaseConfig = sanitizeLocalizedConfig(baseResult.data);
+    if (!isSafeHttpUrl(sanitizedBaseConfig.brandingSettings.logoUrl, true)) {
+        context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Logo URL must be empty or use HTTP(S)',
+            path: ['brandingSettings', 'logoUrl'],
+        });
+    }
+    if (!isSafeHttpUrl(sanitizedBaseConfig.brandingSettings.supportUrl)) {
+        context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Support URL must use HTTP(S)',
+            path: ['brandingSettings', 'supportUrl'],
+        });
+    }
+    if (
+        sanitizedBaseConfig.baseSettings.metaTitle.length > 256 ||
+        sanitizedBaseConfig.baseSettings.metaDescription.length > 1_024
+    ) {
+        context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Metadata text is too long',
+            path: ['baseSettings'],
+        });
+    }
+    Object.entries(sanitizedBaseConfig.platforms).forEach(([platformKey, platform]) => {
+        platform.apps.forEach((app, appIndex) => {
+            app.blocks.forEach((block, blockIndex) => {
+                block.buttons.forEach((button, buttonIndex) => {
+                    const error = getButtonLinkError(button.link, button.type);
+                    if (error) {
+                        context.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            message: error,
+                            path: [
+                                'platforms',
+                                platformKey,
+                                'apps',
+                                appIndex,
+                                'blocks',
+                                blockIndex,
+                                'buttons',
+                                buttonIndex,
+                                'link',
+                            ],
+                        });
+                    }
+                });
+            });
+        });
+    });
+
     let svgLibrary: Record<string, string>;
     try {
-        svgLibrary = sanitizeSvgLibrary(baseResult.data.svgLibrary);
+        svgLibrary = sanitizeSvgLibrary(sanitizedBaseConfig.svgLibrary);
     } catch {
         context.addIssue({
             code: z.ZodIssueCode.custom,
@@ -278,7 +484,7 @@ export const SubscriptionPageConfigSchema = z.unknown().transform((input, contex
     }
     const validSvgKeys = new Set(Object.keys(svgLibrary));
     customLinksResult.data.forEach((link, index) => {
-        for (const locale of baseResult.data.locales) {
+        for (const locale of sanitizedBaseConfig.locales) {
             if (!link.displayName[locale]) {
                 context.addIssue({
                     code: z.ZodIssueCode.custom,
@@ -296,7 +502,7 @@ export const SubscriptionPageConfigSchema = z.unknown().transform((input, contex
         }
     });
 
-    return { ...baseResult.data, svgLibrary, customLinks: customLinksResult.data };
+    return { ...sanitizedBaseConfig, svgLibrary, customLinks: customLinksResult.data };
 });
 
 export type TSubscriptionPageCustomLink = z.infer<typeof CustomLinkSchema>;

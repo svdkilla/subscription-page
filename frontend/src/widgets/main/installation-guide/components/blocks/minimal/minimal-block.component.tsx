@@ -1,7 +1,7 @@
 import { Box, Group, Stack, Text } from '@mantine/core'
 
 import { getColorGradient, getLocalizedText } from '@shared/utils/config-parser'
-import { ThemeIconShared } from '@shared/ui'
+import { sanitizeLocalizedHtmlForDisplay, ThemeIconShared } from '@shared/ui'
 
 import { IBlockRendererProps } from '../renderer-block.interface'
 import classes from './minimal-block.module.css'
@@ -31,7 +31,9 @@ export const MinimalBlockRenderer = ({
                             <Text
                                 c="white"
                                 dangerouslySetInnerHTML={{
-                                    __html: getLocalizedText(block.title, currentLang)
+                                    __html: sanitizeLocalizedHtmlForDisplay(
+                                        getLocalizedText(block.title, currentLang)
+                                    )
                                 }}
                                 fw={500}
                                 size={isMobile ? 'sm' : 'md'}
@@ -40,7 +42,9 @@ export const MinimalBlockRenderer = ({
                         <Text
                             c="dimmed"
                             dangerouslySetInnerHTML={{
-                                __html: getLocalizedText(block.description, currentLang)
+                                __html: sanitizeLocalizedHtmlForDisplay(
+                                    getLocalizedText(block.description, currentLang)
+                                )
                             }}
                             size={isMobile ? 'xs' : 'sm'}
                             style={{ lineHeight: 1.6 }}

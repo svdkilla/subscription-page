@@ -1,7 +1,7 @@
 import { Card, Group, Stack, Text, Title } from '@mantine/core'
 
 import { getColorGradient, getLocalizedText } from '@shared/utils/config-parser'
-import { ThemeIconShared } from '@shared/ui'
+import { sanitizeLocalizedHtmlForDisplay, ThemeIconShared } from '@shared/ui'
 
 import { IBlockRendererProps } from '../renderer-block.interface'
 import classes from './cards-block.module.css'
@@ -42,7 +42,9 @@ export const CardsBlockRenderer = ({
                                 >
                                     <span
                                         dangerouslySetInnerHTML={{
-                                            __html: getLocalizedText(block.title, currentLang)
+                                            __html: sanitizeLocalizedHtmlForDisplay(
+                                                getLocalizedText(block.title, currentLang)
+                                            )
                                         }}
                                     />
                                 </Title>
@@ -53,7 +55,9 @@ export const CardsBlockRenderer = ({
                                 >
                                     <span
                                         dangerouslySetInnerHTML={{
-                                            __html: getLocalizedText(block.description, currentLang)
+                                            __html: sanitizeLocalizedHtmlForDisplay(
+                                                getLocalizedText(block.description, currentLang)
+                                            )
                                         }}
                                     />
                                 </Text>

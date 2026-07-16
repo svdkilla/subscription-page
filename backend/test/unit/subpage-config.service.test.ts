@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import {
+    NotFoundException,
+    ServiceUnavailableException,
+    UnauthorizedException,
+} from '@nestjs/common';
 
 import { TypedConfigService } from '@common/config/app-config';
 import { AxiosService } from '@common/axios';
@@ -130,5 +134,28 @@ describe('SubpageConfigService cache-aside behavior', () => {
         await expect(service.getSubscriptionPageConfig(encryptedUuid)).rejects.toBeInstanceOf(
             ServiceUnavailableException,
         );
+    });
+
+    it('binds an encrypted session value to exactly one config UUID', async () => {
+        const { axios, encryptedUuid, service } = createService();
+        axios.getSubscriptionPageConfigByUuid.mockResolvedValue({
+            isOk: true,
+            response: { config: createSubpageConfigFixture() },
+        });
+
+        await service.getSubscriptionPageConfig(encryptedUuid);
+        expect(axios.getSubscriptionPageConfigByUuid).toHaveBeenCalledWith(
+            '11111111-1111-4111-8111-111111111111',
+        );
+        await expect(
+            service.getSubscriptionPageConfig(`${encryptedUuid.slice(0, -1)}A`),
+        ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('does not accept a plain config UUID as an app-config selector', async () => {
+        const { service } = createService();
+        await expect(
+            service.getSubscriptionPageConfig('22222222-2222-4222-8222-222222222222'),
+        ).rejects.toBeInstanceOf(UnauthorizedException);
     });
 });

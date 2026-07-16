@@ -198,12 +198,13 @@ export const resolveCustomLinks = (
                     (uri) => SCHEME_PATTERN.exec(uri)?.[1]?.toLowerCase() === link.protocol
                 )
             } else {
+                // prettier-ignore
                 candidates = [
                     link.mode === 'template'
                         ? link.uri.replace(
-                              /\{\{(username|shortUuid|subscriptionUrl)\}\}/gu,
-                              (_, key: keyof typeof values) => values[key]
-                          )
+                            /\{\{(username|shortUuid|subscriptionUrl)\}\}/gu,
+                            (_, key: keyof typeof values) => values[key]
+                        )
                         : link.uri
                 ]
             }

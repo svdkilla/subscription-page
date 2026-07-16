@@ -103,7 +103,7 @@ export class AxiosService implements OnModuleInit {
                     }) +
                     '\n',
             );
-            this.logger.error(remnawaveMetadata.error);
+            this.logger.error('Panel metadata request failed.');
 
             exit(1);
         } else {
@@ -161,19 +161,8 @@ export class AxiosService implements OnModuleInit {
                 response: response.data,
             };
         } catch (error) {
-            if (error instanceof AxiosError) {
-                this.logger.error('Error in Axios GetUserByUsername Request:', error.message);
-
-                return {
-                    isOk: false,
-                };
-            } else {
-                this.logger.error('Error in GetUserByUsername Request:', error);
-
-                return {
-                    isOk: false,
-                };
-            }
+            this.logUpstreamFailure('User lookup', error);
+            return { isOk: false };
         }
     }
 
@@ -255,12 +244,7 @@ export class AxiosService implements OnModuleInit {
                 response: response.data,
             };
         } catch (error) {
-            if (error instanceof AxiosError) {
-                this.logger.error('Error in GetSubscriptionInfo Request:', error.message);
-            } else {
-                this.logger.error('Error in GetSubscriptionInfo Request:', error);
-            }
-
+            this.logUpstreamFailure('Subscription info', error);
             return { isOk: false };
         }
     }
@@ -284,7 +268,7 @@ export class AxiosService implements OnModuleInit {
                 response: response.data.response,
             };
         } catch (error) {
-            this.logger.error('Error in GetSubpageConfig Request:', error);
+            this.logUpstreamFailure('Subscription config selection', error);
             return { isOk: false };
         }
     }
@@ -345,5 +329,10 @@ export class AxiosService implements OnModuleInit {
 
             return null;
         }
+    }
+
+    private logUpstreamFailure(operation: string, error: unknown): void {
+        const status = error instanceof AxiosError ? error.response?.status : undefined;
+        this.logger.error(`${operation} request failed${status ? ` (HTTP ${status})` : ''}.`);
     }
 }

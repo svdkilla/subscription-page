@@ -1,29 +1,44 @@
 # Subscription page security and operations
 
-## Architecture
+## How configuration moves through the service
 
-Each PM2 worker treats the panel API as the source of truth. Configurations are keyed by UUID and loaded through a 1–5 second cache-aside cache. Concurrent misses for one UUID are coalesced. A validated last-known-good value may be served only for the configured bounded interval; a panel 404 evicts it immediately, and invalid data never replaces it. This design needs no cross-worker mutable state and therefore works with multiple PM2 instances.
+The panel API is the source of truth. Each PM2 worker caches a configuration by UUID for 1 to 5 seconds, and concurrent misses for the same UUID share one upstream request. A worker can fall back to a validated last-known-good copy for a bounded period. A panel `404` removes that copy at once. Invalid panel data never enters the cache.
 
-The authenticated app-config response has a content-derived ETag and supports `If-None-Match`. It is marked `private, no-cache, must-revalidate`, with CDN caching explicitly disabled. The browser polls every 20 seconds and refreshes on focus/visibility changes without re-rendering on 304.
+The protected app-config response uses a content-derived ETag. Browsers can send `If-None-Match` and receive `304` when nothing changed. Responses carry `private, no-cache, must-revalidate`, while `CDN-Cache-Control` and `Surrogate-Control` both disable shared caching. The frontend checks for changes every 20 seconds and also refreshes after focus or visibility events.
 
-`customLinks` is a backward-compatible array (missing means `[]`). Each item has a stable ID, enabled state, localized display name, URI, one action (`open`, `copy`, or `qr`), optional icon key, order, and mode (`literal`, allowlisted template substitution, or protocol selection from subscription links). URI schemes are centrally allowlisted; HTTP(S) uses the URL parser and VPN schemes use strict syntax and length checks. User URIs are never fetched by the server.
+`customLinks` stays backward compatible. A missing field means an empty array. Links have a stable ID, localized label, URI, action, order, optional icon, and one of three modes: literal URI, fixed template substitution, or protocol selection from the user's subscription links. The server never fetches a custom-link URI.
 
-Until a new `@remnawave/subscription-page-types` release is published, the three applications use documented, backward-compatible local adapters around version 0.4.0. Publish the shared schema first, replace the adapters with that exact released version, and remove the duplicated compatibility modules in one coordinated release.
+The three repositories currently keep small adapters around `@remnawave/subscription-page-types` 0.4.0. Publish the shared schema before replacing those adapters. Both consumers must move to the same real package version in one release.
 
-## Threat model and controls
+## Security boundaries
 
-- Public page/static files: immutable absolute build root, GET/HEAD only, dotfiles and source maps denied, strict extension/path allowlist, traversal and double-decoding rejection, generic errors and rate limits.
-- Panel API/token: the token remains server-only and should have only metadata, subscription-info, config list/get, and unavoidable subscription read scopes. Request/response proxy headers use allowlists and logs redact UUIDs, tokens, user links, and subscription identifiers.
-- App-config: signed short-lived HS256 session cookie with issuer, audience and required claims; `HttpOnly`, `Secure`, `SameSite=Strict`; private cache policy and no public invalidation endpoint.
-- Links/SVG: exact URI scheme parsing, fixed template variables and no evaluation. SVG is sanitized on panel write/import and again at the render boundary with narrow tag/attribute allowlists, size/complexity limits and external references disabled.
-- HTTP/reverse proxy: restrictive CSP (`object-src` and `base-uri` none; no `unsafe-eval`), no-referrer, Permissions-Policy, HSTS, host allowlist, checked forwarded protocol and an explicit proxy-hop count.
-- Containers: non-root user, read-only root filesystem, all capabilities dropped, no-new-privileges, init, PID limit, `/tmp` tmpfs and health check. No host directories, panel filesystem, `.env`, or Docker socket are mounted.
+- Public files come from one absolute build directory. Only `GET` and `HEAD` pass the public request guard. Dotfiles, source maps, traversal, double decoding, mixed slashes, Windows paths, and sensitive filenames are rejected.
+- App-config requires a short-lived HS256 session cookie with the expected issuer, audience, and claims. The cookie is `HttpOnly`, `Secure`, and `SameSite=Strict`.
+- SVG is cleaned when the panel accepts a configuration and again before display. The allowlist excludes scripts, events, embedded HTML, external references, CSS, oversized documents, and deep element trees.
+- Localized guide text keeps a small formatting subset. It cannot create links, images, SVG, events, or arbitrary attributes.
+- Button and branding URLs use explicit scheme checks. HTTP links pass through the platform URL parser. App links use a fixed scheme list and fixed template names. No template is evaluated as code.
+- The reverse proxy must overwrite forwarded headers. The application trusts a configured hop count, reads the raw `Host` header for its allowlist, requires HTTPS from the trusted hop, and ignores `X-Forwarded-Host` for host authorization.
+- Production containers run as UID 1000 with a read-only root filesystem, `no-new-privileges`, no Linux capabilities, a PID limit, and a small `/tmp` tmpfs. Published ports bind to `127.0.0.1`.
 
-## Build and secure operation
+## API token scopes
 
-Build with the committed lock files (`npm ci`) and the production Dockerfile. Supply `REMNAWAVE_API_TOKEN_FILE` and `INTERNAL_JWT_SECRET_FILE` as Docker secrets; use a separate random secret of at least 32 characters. Set `ALLOWED_HOSTS` to the public subscription hosts and set `TRUST_PROXY` to the exact number of trusted reverse-proxy hops. Terminate TLS at the trusted proxy, preserve `X-Forwarded-Proto: https`, and keep HSTS enabled there and in the application. Bind published ports to `127.0.0.1` or an internal network only.
+Give the subscription page a dedicated token. The smallest working set is:
 
-Example negative checks (all must return 404/401 without file contents):
+- `system:metadata`
+- `subscription-page-configs:list`
+- `subscription-page-configs:get`
+- `subscriptions:subpage-config`
+- `subscriptions:get`
+
+Add `users:by-username` only when Marzban legacy links are enabled. Do not grant wildcard scopes or any write scope. `subscriptions:get` is required because the browser bootstrap now reads extended subscription information through an authenticated panel endpoint.
+
+## Production setup
+
+Build from the committed lock files with `npm ci`. Put the panel token and JWT key in Docker secrets through `REMNAWAVE_API_TOKEN_FILE` and `INTERNAL_JWT_SECRET_FILE`. The JWT key needs at least 32 random characters and must be separate from every panel secret.
+
+Set `ALLOWED_HOSTS` to the public subscription hostnames. Set `TRUST_PROXY` to the exact number of proxy hops. TLS ends at that proxy, which must replace `X-Forwarded-For`, set `X-Forwarded-Proto: https`, clear `X-Forwarded-Host`, and reject unknown `Host` values. Keep the application port on loopback or an internal Docker network.
+
+These safe probes must return a generic `400`, `401`, or `404` with no file content:
 
 ```sh
 curl -i https://subscriptions.example/.env
@@ -35,4 +50,4 @@ curl -i 'https://subscriptions.example/%252e%252e/%252e%252e/etc/passwd'
 curl -i https://subscriptions.example/assets/.app-config-v2.json
 ```
 
-Before release, run type checking, lint, unit/integration tests, production builds, Playwright E2E, dependency audit, secret scanning, `docker compose config`, and container health/read-only checks in CI.
+Release CI should run type checks, lint, unit and integration tests, production builds, Playwright, dependency audit, secret scanning, `docker compose config`, and a health check against the read-only container.

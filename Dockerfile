@@ -44,7 +44,8 @@ ENV PM2_DISABLE_VERSION_CHECK=true
 ENV PM2_HOME=/tmp/pm2
 ENV NODE_OPTIONS="--max-old-space-size=16384"
 
-RUN npm install pm2 -g
+RUN npm install --global pm2@7.0.3 \
+    && npm cache clean --force
 
 USER node
 

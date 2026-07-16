@@ -1,4 +1,5 @@
 export * from './loading-screen'
 export * from './page'
 export * from './remnawave-logo'
+export * from './safe-html'
 export * from './theme-icon'

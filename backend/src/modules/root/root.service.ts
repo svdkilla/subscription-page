@@ -1,5 +1,5 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { Request, Response } from 'express';
-import { createHash } from 'node:crypto';
 import { nanoid } from 'nanoid';
 
 import { Injectable } from '@nestjs/common';
@@ -324,7 +324,12 @@ export class RootService {
 
         const expectedSignature = Buffer.from(digest).toString('base64url').slice(0, 10);
 
-        if (uSignature !== expectedSignature) {
+        const actualSignatureBuffer = Buffer.from(uSignature);
+        const expectedSignatureBuffer = Buffer.from(expectedSignature);
+        if (
+            actualSignatureBuffer.length !== expectedSignatureBuffer.length ||
+            !timingSafeEqual(actualSignatureBuffer, expectedSignatureBuffer)
+        ) {
             this.logger.debug('Signature mismatch');
             return null;
         }
