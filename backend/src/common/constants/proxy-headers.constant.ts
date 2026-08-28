@@ -4,11 +4,7 @@ export const SUBSCRIPTION_REQUEST_HEADERS_ALLOWLIST = new Set([
     'if-modified-since',
     'if-none-match',
     'user-agent',
-    'x-device-model',
-    'x-device-os',
-    'x-hwid',
     'x-remnawave-client-type',
-    'x-ver-os',
 ]);
 
 export const SUBSCRIPTION_RESPONSE_HEADERS_ALLOWLIST = new Set([
